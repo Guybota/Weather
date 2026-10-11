@@ -9,6 +9,8 @@ export function locale(): string {
   return language() === 'pt' ? 'pt-PT' : 'en-GB';
 }
 const messages: Record<string, string> = {
+  'Nascer do sol': 'Sunrise',
+  'Pôr do sol': 'Sunset',
   'O IPMA disponibiliza apenas previsão diária para este dia. Consulta o resumo diário.':
     'IPMA only provides a daily forecast for this day. See the daily summary.',
   'Não está prevista chuva nos períodos restantes disponíveis.':

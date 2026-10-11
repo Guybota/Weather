@@ -1,8 +1,9 @@
-import { Sun, Wind, Droplets } from 'lucide-react';
+import { Sun, Sunrise, Sunset, Wind, Droplets } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { dateInZone, formatDay, formatTime, value, type Period } from './weather';
 import { localHour } from './experience';
 import { t, language } from './i18n';
+import type { SolarEvent } from './solar';
 
 export function WeatherIcon({
   code,
@@ -124,10 +125,12 @@ export function ForecastChart({
   onSelect,
   now,
   source = 'IPMA',
+  solar = [],
 }: {
   periods: Period[];
   timezone: string;
   source?: string;
+  solar?: SolarEvent[];
   metric: 'temperature' | 'rain' | 'wind';
   onMetric: (metric: 'temperature' | 'rain' | 'wind') => void;
   selected: number;
@@ -175,13 +178,22 @@ export function ForecastChart({
         )
       : Math.min(selected, Math.max(0, periods.length - 1));
   const before = periods.filter((p) => Date.parse(p.at) <= now).length - 1;
+  const entries = [
+    ...periods.map((period, index) => ({
+      kind: 'forecast' as const,
+      at: period.at,
+      period,
+      index,
+    })),
+    ...solar,
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   useEffect(() => {
     const strip = stripRef.current,
-      button = strip?.children[index] as HTMLElement | undefined;
+      button = strip?.querySelector<HTMLElement>(`[data-forecast-index="${index}"]`);
     if (strip && button)
       strip.scrollLeft =
         button.offsetLeft - strip.offsetLeft - strip.clientWidth / 2 + button.clientWidth / 2;
-  }, [index, periods]);
+  }, [index, periods, solar]);
   const height = 190,
     left = 34,
     right = 20,
@@ -449,9 +461,43 @@ export function ForecastChart({
               <strong>{value(reading('wind'), ' km/h')}</strong>
             </span>
           </div>
-          <div ref={stripRef} className="hour-strip" aria-label={t('Selecionar hora')}>
-            {periods.map((p, i) => (
-              <button key={p.at} aria-pressed={!live && index === i} onClick={() => onSelect(i)}>
+        </>
+      ) : (
+        <div className="section-empty">
+          {t(
+            periods.length
+              ? 'Este parâmetro não está disponível para o dia selecionado.'
+              : 'O IPMA disponibiliza apenas previsão diária para este dia. Consulta o resumo diário.',
+          ).replaceAll('IPMA', source)}
+        </div>
+      )}
+      {entries.length > 0 && (
+        <div ref={stripRef} className="hour-strip" aria-label={t('Selecionar hora')}>
+          {entries.map((entry) => {
+            if (entry.kind !== 'forecast') {
+              const label = t(entry.kind === 'sunrise' ? 'Nascer do sol' : 'Pôr do sol');
+              const Icon = entry.kind === 'sunrise' ? Sunrise : Sunset;
+              return (
+                <div
+                  key={entry.kind + entry.at}
+                  className="hour-solar"
+                  role="group"
+                  aria-label={`${label}, ${formatTime(entry.at, timezone)}`}
+                >
+                  <time dateTime={entry.at}>{formatTime(entry.at, timezone)}</time>
+                  <Icon size={23} aria-hidden="true" />
+                  <strong>{label}</strong>
+                </div>
+              );
+            }
+            const { period: p, index: i } = entry;
+            return (
+              <button
+                key={p.at}
+                data-forecast-index={i}
+                aria-pressed={!live && index === i}
+                onClick={() => onSelect(i)}
+              >
                 <span>{formatTime(p.at, timezone)}</span>
                 <WeatherIcon
                   code={p.weather}
@@ -464,24 +510,18 @@ export function ForecastChart({
                   {value(p.rain, '%')}
                 </span>
               </button>
-            ))}
-          </div>
-          <p className="chart-caption">
-            {t(
-              metric === 'rain'
-                ? 'Pontos: valores do IPMA. Tracejado: horas sem valor. Toca ou arrasta para consultar; “—” significa sem dados.'
-                : 'Toca ou arrasta no gráfico. As setas do teclado também mudam a hora. “—” indica um valor não fornecido pelo IPMA.',
-            ).replaceAll('IPMA', source)}
-          </p>
-        </>
-      ) : (
-        <div className="section-empty">
-          {t(
-            periods.length
-              ? 'Este parâmetro não está disponível para o dia selecionado.'
-              : 'O IPMA disponibiliza apenas previsão diária para este dia. Consulta o resumo diário.',
-          ).replaceAll('IPMA', source)}
+            );
+          })}
         </div>
+      )}
+      {periods.length > 0 && valid.length > 0 && (
+        <p className="chart-caption">
+          {t(
+            metric === 'rain'
+              ? 'Pontos: valores do IPMA. Tracejado: horas sem valor. Toca ou arrasta para consultar; “—” significa sem dados.'
+              : 'Toca ou arrasta no gráfico. As setas do teclado também mudam a hora. “—” indica um valor não fornecido pelo IPMA.',
+          ).replaceAll('IPMA', source)}
+        </p>
       )}
     </div>
   );

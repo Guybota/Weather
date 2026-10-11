@@ -33,6 +33,7 @@ import { Sheet, FavoritePlaces, Compass, type Preview } from './ExperienceUI';
 import { WeatherBackdrop } from './WeatherBackdrop';
 import { usePageBounce } from './usePageBounce';
 import { useLocationSwipe } from './useLocationSwipe';
+import { solarEvents } from './solar';
 import {
   dayInsight,
   localHour,
@@ -1022,6 +1023,7 @@ export default function App() {
                   </div>
                   <ForecastChart
                     periods={hoursForDay}
+                    solar={solarEvents(selectedDate, location)}
                     timezone={timezone}
                     metric={metric}
                     onMetric={setMetric}
@@ -1277,6 +1279,7 @@ export default function App() {
           </div>
           <ForecastChart
             periods={hoursForDay}
+            solar={solarEvents(selectedDate, location)}
             timezone={timezone}
             metric={metric}
             onMetric={setMetric}

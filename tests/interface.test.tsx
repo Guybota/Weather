@@ -5,6 +5,7 @@ import App from '../src/App';
 import { ForecastChart } from '../src/components';
 import { parseForecast } from '../src/weather';
 import { WeatherBackdrop } from '../src/WeatherBackdrop';
+import { solarEvents } from '../src/solar';
 
 vi.mock('../src/api', () => ({
   loadData: vi.fn(async (path: string) => ({
@@ -106,6 +107,7 @@ it('keeps weather and native panels usable when WebGL is unavailable', async () 
 it('preserves the sky without reinitialising WebGL when system reduced motion changes', async () => {
   const { container } = render(<WeatherBackdrop code={4} night={false} dark={false} />);
   await waitFor(() => expect(container.querySelector('.aurora-weather')).toBeTruthy());
+  await waitFor(() => expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalled());
   const layer = container.querySelector('.aurora-weather');
   const attempts = vi.mocked(HTMLCanvasElement.prototype.getContext).mock.calls.length;
   act(() => {
@@ -155,6 +157,99 @@ it('opens and closes a day detail and persists selected indicators', async () =>
   fireEvent.click(screen.getByRole('checkbox', { name: 'Pressure' }));
   expect(JSON.parse(localStorage.getItem('tempo:indicators')!)).toContain('pressure');
 });
+it('inserts sunrise and sunset chronologically without changing forecast selection indices', () => {
+  const solar = solarEvents('2026-10-11', {
+    id: 1110600,
+    name: 'Lisboa',
+    area: 'LSB',
+    region: 1,
+    latitude: 38.7223,
+    longitude: -9.1393,
+    timezone: 'Europe/Lisbon',
+  });
+  const periods = parseForecast([
+    { idPeriodo: 24, dataPrev: '2026-10-11T00:00:00' },
+    ...['06:00', '09:00', '17:00', '20:00'].map((time) => ({
+      idPeriodo: 1,
+      dataPrev: `2026-10-11T${time}:00`,
+      tMed: 19,
+      idTipoTempo: 1,
+    })),
+  ]).filter((period) => period.interval !== 24);
+  const onSelect = vi.fn();
+  const { container } = render(
+    <ForecastChart
+      periods={periods}
+      solar={solar}
+      timezone="Europe/Lisbon"
+      metric="temperature"
+      onMetric={() => {}}
+      selected={1}
+      onSelect={onSelect}
+      now={0}
+    />,
+  );
+  const strip = container.querySelector('.hour-strip')!;
+  expect(
+    [...strip.children].map(
+      (element) =>
+        element.getAttribute('data-forecast-index') ?? element.querySelector('strong')!.textContent,
+    ),
+  ).toEqual(['0', 'Sunrise', '1', '2', 'Sunset', '3']);
+  expect(strip.querySelectorAll('button')).toHaveLength(4);
+  expect(strip.querySelectorAll('.hour-solar')).toHaveLength(2);
+  fireEvent.click(strip.querySelector('[data-forecast-index="3"]')!);
+  expect(onSelect).toHaveBeenLastCalledWith(3);
+  expect(strip.querySelector('[aria-pressed="true"]')!.getAttribute('data-forecast-index')).toBe(
+    '1',
+  );
+  fireEvent.keyDown(screen.getByRole('slider'), { key: 'ArrowRight' });
+  expect(onSelect).toHaveBeenLastCalledWith(2);
+});
+
+it('shows both solar events for daily-only forecasts and in Portuguese', () => {
+  vi.stubGlobal('navigator', { language: 'pt-PT' });
+  const location = {
+    id: 1110600,
+    name: 'Lisboa',
+    area: 'LSB',
+    region: 1,
+    latitude: 38.7223,
+    longitude: -9.1393,
+    timezone: 'Europe/Lisbon',
+  };
+  const { container, rerender } = render(
+    <ForecastChart
+      periods={[]}
+      solar={solarEvents('2026-10-11', location)}
+      timezone={location.timezone}
+      metric="temperature"
+      onMetric={() => {}}
+      selected={-1}
+      onSelect={() => {}}
+      now={0}
+    />,
+  );
+  expect(screen.getByRole('group', { name: /Nascer do sol/ })).toBeTruthy();
+  expect(screen.getByRole('group', { name: /Pôr do sol/ })).toBeTruthy();
+  expect(container.querySelector('.hour-solar button')).toBeNull();
+  const time = container.querySelector('time')!.dateTime;
+  rerender(
+    <ForecastChart
+      periods={[]}
+      solar={solarEvents('2026-12-21', location)}
+      timezone={location.timezone}
+      metric="temperature"
+      onMetric={() => {}}
+      selected={-1}
+      onSelect={() => {}}
+      now={0}
+    />,
+  );
+  expect(container.querySelector('time')!.dateTime).not.toBe(time);
+  expect(container.querySelector('time')!.dateTime).toContain('2026-12-21');
+});
+
 it('selects actual forecast records by keyboard and keeps missing rain unavailable', () => {
   const periods = parseForecast([
     { idPeriodo: 24, dataPrev: '2026-10-11T00:00:00' },
