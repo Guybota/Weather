@@ -606,7 +606,7 @@ export default function App() {
       target = index + offset;
     if (index < 0 || target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
-    reorder(() => setFavorites(next));
+    setFavorites(next);
     save('favorites', next);
   }
   function moveIndicator(index: number, offset: number) {

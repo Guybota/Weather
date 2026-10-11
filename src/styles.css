@@ -314,8 +314,23 @@ h3 {
   place-items: center;
   color: var(--accent);
 }
-.sidebar .reorder-controls {
-  flex-direction: column;
+.drag-handle {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+.favorite-row[data-dragging] {
+  position: relative;
+  z-index: 1;
+}
+.favorite-row[data-dragging] .favorite-place {
+  background: var(--surface);
+  box-shadow: 0 8px 24px #00000026;
 }
 .empty-favorites {
   font-size: 13px;

@@ -1,5 +1,13 @@
-import { useEffect, useId, useRef, useState, type PointerEvent, type ReactNode } from 'react';
-import { ArrowUp, ArrowDown, ChevronRight, X } from 'lucide-react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+} from 'react';
+import { ArrowUp, ChevronRight, GripVertical, X } from 'lucide-react';
 import { WeatherIcon } from './components';
 import { dateInZone, value, type Location, type Period } from './weather';
 import { directionDegrees } from './experience';
@@ -167,6 +175,54 @@ export function FavoritePlaces({
   const places = favorites
     .map((id) => locations.find((l) => l.id === id))
     .filter((l): l is Location => !!l);
+  const listRef = useRef<HTMLElement>(null);
+  // Read through a ref: a drag outlives the render it started in.
+  const latest = useRef({ places, onMove });
+  latest.current = { places, onMove };
+  const tops = useRef(new Map<Element, number>());
+  useLayoutEffect(() => {
+    // Rows displaced by a reorder glide from their previous position.
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (const row of listRef.current!.querySelectorAll<HTMLElement>('.favorite-row')) {
+      const before = tops.current.get(row);
+      if (before !== undefined && before !== row.offsetTop && !still && !row.dataset.dragging)
+        row.animate?.(
+          { transform: [`translateY(${before - row.offsetTop}px)`, 'none'] },
+          { duration: 250, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' },
+        );
+      tops.current.set(row, row.offsetTop);
+    }
+  });
+  const drag = (e: PointerEvent, id: number) => {
+    const row = e.currentTarget.closest<HTMLElement>('.favorite-row')!;
+    const step = row.offsetHeight + 7;
+    let start = e.clientY;
+    row.dataset.dragging = 'true';
+    // Window listeners: React moves the row in the DOM, which drops pointer capture.
+    const move = (event: globalThis.PointerEvent) => {
+      let dy = event.clientY - start;
+      const direction = Math.sign(dy);
+      const { places, onMove } = latest.current;
+      const target = places.findIndex((l) => l.id === id) + direction;
+      if (Math.abs(dy) > step / 2 && target >= 0 && target < places.length) {
+        onMove(id, direction);
+        navigator.vibrate?.(5);
+        start += direction * step;
+        dy -= direction * step;
+      }
+      row.style.transform = `translateY(${dy}px)`;
+    };
+    const end = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      delete row.dataset.dragging;
+      row.style.transform = '';
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
   return (
     <>
       <div className="favorites-heading">
@@ -177,18 +233,14 @@ export function FavoritePlaces({
           </button>
         )}
       </div>
-      <nav className="favorites" aria-label={t('Localidades favoritas')}>
-        {places.map((l, i) => {
+      <nav ref={listRef} className="favorites" aria-label={t('Localidades favoritas')}>
+        {places.map((l) => {
           const data = previews[l.id];
           const daily = data?.forecast.find(
             (p) => p.interval === 24 && p.date === dateInZone(now, l.timezone),
           );
           return (
-            <div
-              className="favorite-row"
-              key={l.id}
-              style={{ viewTransitionName: 'place-' + l.id }}
-            >
+            <div className="favorite-row" key={l.id}>
               <button
                 className={`favorite-place ${l.id === selected ? 'active' : ''}`}
                 onClick={() => onChoose(l.id)}
@@ -209,22 +261,21 @@ export function FavoritePlaces({
                 )}
               </button>
               {editing && (
-                <span className="reorder-controls">
-                  <button
-                    disabled={i === 0}
-                    onClick={() => onMove(l.id, -1)}
-                    aria-label={t(`Subir ${l.name}`)}
-                  >
-                    <ArrowUp size={16} />
-                  </button>
-                  <button
-                    disabled={i === places.length - 1}
-                    onClick={() => onMove(l.id, 1)}
-                    aria-label={t(`Descer ${l.name}`)}
-                  >
-                    <ArrowDown size={16} />
-                  </button>
-                </span>
+                <button
+                  className="drag-handle"
+                  aria-label={t(`Reordenar ${l.name}`)}
+                  onPointerDown={(e) => drag(e, l.id)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+                    e.preventDefault();
+                    onMove(l.id, e.key === 'ArrowUp' ? -1 : 1);
+                    // Moving the row in the DOM can drop focus; hand it back.
+                    const handle = e.currentTarget;
+                    setTimeout(() => handle.focus());
+                  }}
+                >
+                  <GripVertical size={18} />
+                </button>
               )}
             </div>
           );

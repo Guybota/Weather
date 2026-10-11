@@ -208,6 +208,7 @@ const patterns: [RegExp, (...matches: string[]) => string][] = [
     (name, time) => `${name}, at ${time.replace('dados guardados', 'saved data')}`,
   ],
   [/^(.+) · dados guardados$/, (name) => `${name} · saved data`],
+  [/^Reordenar (.+)$/, (name) => `Reorder ${name}`],
   [/^Subir (.+)$/, (name) => `Move ${name} up`],
   [/^Descer (.+)$/, (name) => `Move ${name} down`],
   [/^Vem de (.+)$/, (direction) => `From ${direction}`],
