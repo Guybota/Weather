@@ -45,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 function touch(target: Element, type: 'touchStart' | 'touchMove', x: number, y: number) {
@@ -157,4 +158,42 @@ it('respects reduced motion while preserving pull to refresh', () => {
   expect(main.style.translate).toBe('');
   fireEvent.touchEnd(main, { touches: [] });
   expect(refresh).toHaveBeenCalledOnce();
+});
+
+it('leaves iPhone touches and momentum to native bounce while preserving app refresh', () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15',
+  );
+  const refresh = vi.fn();
+  const { container, unmount } = render(<Page refresh={refresh} />);
+  const main = container.querySelector('main')!;
+  expect(document.documentElement.dataset.pageBounce).toBe('native');
+  touch(main, 'touchStart', 100, 100);
+  // Safari reports negative scrollTop while rubber-banding at the top.
+  document.documentElement.scrollTop = -30;
+  expect(fireEvent.touchMove(main, { touches: [{ clientX: 100, clientY: 240 }] })).toBe(true);
+  expect(main.style.translate).toBe('');
+  fireEvent.touchEnd(main, { touches: [] });
+  expect(refresh).toHaveBeenCalledOnce();
+  document.documentElement.scrollTop = 1030;
+  touch(main, 'touchStart', 100, 300);
+  expect(fireEvent.touchMove(main, { touches: [{ clientX: 100, clientY: 100 }] })).toBe(true);
+  fireEvent.touchEnd(main, { touches: [] });
+  expect(refresh).toHaveBeenCalledOnce();
+  expect(fireEvent.wheel(main, { deltaY: 100 })).toBe(true);
+  expect(main.style.translate).toBe('');
+  expect(vi.getTimerCount()).toBe(0);
+  unmount();
+  expect(document.documentElement.dataset.pageBounce).toBeUndefined();
+});
+
+it('uses native bounce on iPads that report a desktop Mac user agent', () => {
+  vi.stubGlobal('navigator', {
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15',
+    platform: 'MacIntel',
+    maxTouchPoints: 5,
+    onLine: true,
+  });
+  render(<Page refresh={vi.fn()} />);
+  expect(document.documentElement.dataset.pageBounce).toBe('native');
 });

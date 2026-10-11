@@ -14,6 +14,14 @@ export function usePageBounce(
     const main = mainRef.current;
     const indicator = pullRef.current;
     if (!main || !indicator || blocked) return;
+    // iOS already supplies rubber-banding, including when momentum reaches an edge.
+    // Cancelling touchmove disables that native scrolling path.
+    const nativeBounce =
+      /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const root = document.documentElement;
+    const previousBounce = root.dataset.pageBounce;
+    root.dataset.pageBounce = nativeBounce ? 'native' : 'custom';
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let offset = 0;
     let velocity = 0;
@@ -28,7 +36,7 @@ export function usePageBounce(
     let pull = 0;
 
     const paint = (value: number) => {
-      offset = motion.matches ? 0 : value;
+      offset = nativeBounce || motion.matches ? 0 : value;
       main.style.translate = offset ? `0 ${offset}px` : '';
       main.style.willChange = offset ? 'translate' : '';
     };
@@ -118,7 +126,7 @@ export function usePageBounce(
       lastY = touch.clientY;
       if (axis !== 'vertical') return;
       if (!distance && !atEdge(delta)) return;
-      if (event.cancelable) event.preventDefault();
+      if (!nativeBounce && event.cancelable) event.preventDefault();
       // Reversing the drag first consumes the stretched distance, then scrolls normally.
       const next = distance + delta;
       distance = distance && Math.sign(next) !== Math.sign(distance) ? 0 : next;
@@ -160,10 +168,10 @@ export function usePageBounce(
     };
 
     window.addEventListener('touchstart', down, { passive: true });
-    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('touchmove', move, { passive: nativeBounce });
     window.addEventListener('touchend', up);
     window.addEventListener('touchcancel', up);
-    window.addEventListener('wheel', wheel, { passive: false });
+    if (!nativeBounce) window.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('blur', reset);
     motion.addEventListener('change', reset);
     return () => {
@@ -175,6 +183,8 @@ export function usePageBounce(
       window.removeEventListener('wheel', wheel);
       window.removeEventListener('blur', reset);
       motion.removeEventListener('change', reset);
+      if (previousBounce === undefined) delete root.dataset.pageBounce;
+      else root.dataset.pageBounce = previousBounce;
     };
   }, [mainRef, pullRef, blocked]);
 }

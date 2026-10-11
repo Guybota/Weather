@@ -49,8 +49,13 @@ html {
   scroll-padding-top: 24px;
   /* Scrolling only: no pinch or double-tap zoom. */
   touch-action: pan-x pan-y;
-  /* The content supplies its own bounce, keeping navigation and the sky stationary. */
+  /* Custom elasticity is the fallback; iOS uses the browser's native bounce. */
   overscroll-behavior: none;
+}
+html[data-page-bounce='native'],
+html[data-page-bounce='native'] body {
+  /* Preserve rubber-banding while keeping pull to refresh inside the app. */
+  overscroll-behavior-y: contain;
 }
 body {
   margin: 0;
