@@ -1128,33 +1128,6 @@ export default function App() {
       </aside>
       <div className="content-column">
         <header className="page-header">
-          {pages.current.ids.length > 1 && (
-            <div
-              ref={pageDotsRef}
-              className="page-dots"
-              role="group"
-              aria-label={t('Localidades favoritas')}
-            >
-              {pages.current.ids.map((id, index) => (
-                <button
-                  key={id}
-                  data-location-id={id}
-                  className={id === locationId ? 'active' : ''}
-                  aria-label={`${systemLanguage === 'pt' ? 'Ver previsão para' : 'View forecast for'} ${locations.find((place) => place.id === id)?.name}`}
-                  aria-current={id === locationId ? 'location' : undefined}
-                  onClick={() =>
-                    slideTo(id, index > pages.current.ids.indexOf(locationId) ? 1 : -1)
-                  }
-                >
-                  {index === 0 ? (
-                    <House size={12} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
-                  ) : (
-                    <span />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
           <div className="topbar">
             <span className="today-date">
               {new Intl.DateTimeFormat(locale(), {
@@ -1188,6 +1161,33 @@ export default function App() {
               )}
             </div>
           </div>
+          {pages.current.ids.length > 1 && (
+            <div
+              ref={pageDotsRef}
+              className="page-dots"
+              role="group"
+              aria-label={t('Localidades favoritas')}
+            >
+              {pages.current.ids.map((id, index) => (
+                <button
+                  key={id}
+                  data-location-id={id}
+                  className={id === locationId ? 'active' : ''}
+                  aria-label={`${systemLanguage === 'pt' ? 'Ver previsão para' : 'View forecast for'} ${locations.find((place) => place.id === id)?.name}`}
+                  aria-current={id === locationId ? 'location' : undefined}
+                  onClick={() =>
+                    slideTo(id, index > pages.current.ids.indexOf(locationId) ? 1 : -1)
+                  }
+                >
+                  {index === 0 ? (
+                    <House size={12} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
+                  ) : (
+                    <span />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </header>
         {renderPage(locationId)}
         {swipePreviewId !== null && renderPage(swipePreviewId, true)}

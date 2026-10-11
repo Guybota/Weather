@@ -377,7 +377,7 @@ it('previews the actual next forecast before release and uses a house for the fi
   expect(main.querySelector('.topbar, .page-dots')).toBeNull();
   expect(
     dots.compareDocumentPosition(header.querySelector('.topbar')!) &
-      Node.DOCUMENT_POSITION_FOLLOWING,
+      Node.DOCUMENT_POSITION_PRECEDING,
   ).toBeTruthy();
   expect(dots.querySelector('button:first-child .lucide-house')).toBeTruthy();
   expect(dots.querySelector('button:nth-child(2) span')).toBeTruthy();
