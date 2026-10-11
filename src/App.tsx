@@ -830,165 +830,170 @@ export default function App() {
           <>
             {(warnings.length > 0 || current.warningsStale || current.warningsUnknown) &&
               warningBlock}
-            <section className="weather-hero" aria-label={t('Resumo do tempo')}>
-              <WeatherBackdrop code={skyCode} night={night} dark={theme === 'dark'} />
-              <div className="hero-reading">
-                <span className="reading-label">
-                  {t(observation ? 'Temperatura observada' : 'Temperatura prevista')}
-                </span>
-                <div className="hero-temperature">
-                  {value(currentTemperature)}
-                  <span>°</span>
-                </div>
-                <h2>{descriptions.get(skyCode) ?? t('Previsão do dia')}</h2>
-                <p className="condition-source">
-                  {t('Condição prevista')}
-                  {nearestForecast
-                    ? ' · ' + formatTime(nearestForecast.at, timezone)
-                    : ' · ' + t('Previsão diária')}
-                </p>
-                <div className="hero-range">
-                  <span>
-                    {t('Máx.')} <strong>{value(todayForecast?.max, '°')}</strong>
+            <div className="dashboard">
+              <section className="weather-hero" aria-label={t('Resumo do tempo')}>
+                <WeatherBackdrop code={skyCode} night={night} dark={theme === 'dark'} />
+                <div className="hero-reading">
+                  <span className="reading-label">
+                    {t(observation ? 'Temperatura observada' : 'Temperatura prevista')}
                   </span>
-                  <span>
-                    {t('Mín.')} <strong>{value(todayForecast?.min, '°')}</strong>
-                  </span>
-                  <button onClick={() => setSheet('rain')} aria-label={t('Probabilidade de chuva')}>
-                    <Droplets size={14} />
-                    {value(todayForecast?.rain, '%')}
-                  </button>
-                </div>
-              </div>
-              <div className="hero-art">
-                <SkyIllustration code={skyCode} night={night} />
-              </div>
-              <p className="observation-source">
-                {t(
-                  observation
-                    ? observation.name +
-                        ', a ' +
-                        value(observation.distance, ' km') +
-                        ' · ' +
-                        formatTime(observation.at, timezone) +
-                        (current.observationsStale ? ' · dados guardados' : '')
-                    : nearestForecast
-                      ? 'Previsão para as ' +
-                        formatTime(nearestForecast.at, timezone) +
-                        '. Sem observação recente próxima.'
-                      : 'Sem temperatura recente disponível.',
-                )}
-              </p>
-            </section>
-            <div className="day-insight">
-              <Info size={17} />
-              <p>{t(insight)}</p>
-            </div>
-            <div className="forecast-layout">
-              <section className="hourly-panel" id="forecast">
-                <div className="section-heading">
-                  <div>
-                    <h2>{t('Ao longo do dia')}</h2>
-                    <p>
-                      {selectedDate === today
-                        ? t('Hoje')
-                        : formatDay(selectedDate, {
-                            weekday: 'long',
-                            day: 'numeric',
-                            month: 'short',
-                          })}
-                    </p>
+                  <div className="hero-temperature">
+                    {value(currentTemperature)}
+                    <span>°</span>
                   </div>
-                  <label className="day-select">
-                    <span className="sr-only">{t('Dia do gráfico')}</span>
-                    <select value={selectedDate} onChange={(e) => selectDate(e.target.value)}>
-                      {daily.map((p) => (
-                        <option key={p.date} value={p.date}>
-                          {p.date === today
-                            ? t('Hoje')
-                            : formatDay(p.date, {
-                                weekday: 'short',
-                                day: 'numeric',
-                                month: 'short',
-                              })}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <ForecastChart
-                  periods={hoursForDay}
-                  timezone={timezone}
-                  metric={metric}
-                  onMetric={setMetric}
-                  selected={selectedHour}
-                  onSelect={setSelectedHour}
-                  now={now}
-                />
-                {selectedDay && !hoursForDay.length && (
-                  <div className="selected-day-summary">
+                  <h2>{descriptions.get(skyCode) ?? t('Previsão do dia')}</h2>
+                  <p className="condition-source">
+                    {t('Condição prevista')}
+                    {nearestForecast
+                      ? ' · ' + formatTime(nearestForecast.at, timezone)
+                      : ' · ' + t('Previsão diária')}
+                  </p>
+                  <div className="hero-range">
                     <span>
-                      {t('Mínima')}
-                      <strong>{value(selectedDay.min, '°')}</strong>
+                      {t('Máx.')} <strong>{value(todayForecast?.max, '°')}</strong>
                     </span>
                     <span>
-                      {t('Máxima')}
-                      <strong>{value(selectedDay.max, '°')}</strong>
+                      {t('Mín.')} <strong>{value(todayForecast?.min, '°')}</strong>
                     </span>
-                    <span>
-                      {t('Chuva')}
-                      <strong>{value(selectedDay.rain, '%')}</strong>
-                    </span>
-                  </div>
-                )}
-              </section>
-              <section className="daily-panel" id="days">
-                <div className="section-heading">
-                  <div>
-                    <h2>
-                      <CalendarDays size={17} />
-                      {t('Próximos ' + daily.length + ' dias')}
-                    </h2>
-                    <p>{t('Consulta o detalhe ao tocar num dia.')}</p>
+                    <button
+                      onClick={() => setSheet('rain')}
+                      aria-label={t('Probabilidade de chuva')}
+                    >
+                      <Droplets size={14} />
+                      {value(todayForecast?.rain, '%')}
+                    </button>
                   </div>
                 </div>
-                <DailyForecast
-                  periods={daily}
-                  today={today}
-                  selectedDate={selectedDate}
-                  onSelect={(date) => {
-                    selectDate(date);
-                    setSheet('day');
-                  }}
-                  descriptions={descriptions}
-                />
-                <p className="daily-caption">
-                  {t('Temperaturas mínima e máxima (°C). Chuva: probabilidade diária (%).')}
+                <div className="hero-art">
+                  <SkyIllustration code={skyCode} night={night} />
+                </div>
+                <p className="observation-source">
+                  {t(
+                    observation
+                      ? observation.name +
+                          ', a ' +
+                          value(observation.distance, ' km') +
+                          ' · ' +
+                          formatTime(observation.at, timezone) +
+                          (current.observationsStale ? ' · dados guardados' : '')
+                      : nearestForecast
+                        ? 'Previsão para as ' +
+                          formatTime(nearestForecast.at, timezone) +
+                          '. Sem observação recente próxima.'
+                        : 'Sem temperatura recente disponível.',
+                  )}
                 </p>
               </section>
+              <div className="day-insight">
+                <Info size={17} />
+                <p>{t(insight)}</p>
+              </div>
+              <div className="forecast-layout">
+                <section className="hourly-panel" id="forecast">
+                  <div className="section-heading">
+                    <div>
+                      <h2>{t('Ao longo do dia')}</h2>
+                      <p>
+                        {selectedDate === today
+                          ? t('Hoje')
+                          : formatDay(selectedDate, {
+                              weekday: 'long',
+                              day: 'numeric',
+                              month: 'short',
+                            })}
+                      </p>
+                    </div>
+                    <label className="day-select">
+                      <span className="sr-only">{t('Dia do gráfico')}</span>
+                      <select value={selectedDate} onChange={(e) => selectDate(e.target.value)}>
+                        {daily.map((p) => (
+                          <option key={p.date} value={p.date}>
+                            {p.date === today
+                              ? t('Hoje')
+                              : formatDay(p.date, {
+                                  weekday: 'short',
+                                  day: 'numeric',
+                                  month: 'short',
+                                })}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <ForecastChart
+                    periods={hoursForDay}
+                    timezone={timezone}
+                    metric={metric}
+                    onMetric={setMetric}
+                    selected={selectedHour}
+                    onSelect={setSelectedHour}
+                    now={now}
+                  />
+                  {selectedDay && !hoursForDay.length && (
+                    <div className="selected-day-summary">
+                      <span>
+                        {t('Mínima')}
+                        <strong>{value(selectedDay.min, '°')}</strong>
+                      </span>
+                      <span>
+                        {t('Máxima')}
+                        <strong>{value(selectedDay.max, '°')}</strong>
+                      </span>
+                      <span>
+                        {t('Chuva')}
+                        <strong>{value(selectedDay.rain, '%')}</strong>
+                      </span>
+                    </div>
+                  )}
+                </section>
+                <section className="daily-panel" id="days">
+                  <div className="section-heading">
+                    <div>
+                      <h2>
+                        <CalendarDays size={17} />
+                        {t('Próximos ' + daily.length + ' dias')}
+                      </h2>
+                      <p>{t('Consulta o detalhe ao tocar num dia.')}</p>
+                    </div>
+                  </div>
+                  <DailyForecast
+                    periods={daily}
+                    today={today}
+                    selectedDate={selectedDate}
+                    onSelect={(date) => {
+                      selectDate(date);
+                      setSheet('day');
+                    }}
+                    descriptions={descriptions}
+                  />
+                  <p className="daily-caption">
+                    {t('Temperaturas mínima e máxima (°C). Chuva: probabilidade diária (%).')}
+                  </p>
+                </section>
+              </div>
+              <section className="metrics" aria-label={t('Indicadores de hoje')}>
+                {indicators.map((key) => {
+                  const data = indicatorData[key],
+                    Icon = data.icon;
+                  return (
+                    <button
+                      key={key}
+                      className="metric-card"
+                      onClick={() => setSheet(key)}
+                      aria-haspopup="dialog"
+                    >
+                      <span className="metric-label">
+                        <Icon size={17} />
+                        {t(data.label)}
+                        <ChevronRight size={14} />
+                      </span>
+                      <strong>{data.reading}</strong>
+                      <span className="metric-note">{t(data.note)}</span>
+                    </button>
+                  );
+                })}
+              </section>
             </div>
-            <section className="metrics" aria-label={t('Indicadores de hoje')}>
-              {indicators.map((key) => {
-                const data = indicatorData[key],
-                  Icon = data.icon;
-                return (
-                  <button
-                    key={key}
-                    className="metric-card"
-                    onClick={() => setSheet(key)}
-                    aria-haspopup="dialog"
-                  >
-                    <span className="metric-label">
-                      <Icon size={17} />
-                      {t(data.label)}
-                      <ChevronRight size={14} />
-                    </span>
-                    <strong>{data.reading}</strong>
-                    <span className="metric-note">{t(data.note)}</span>
-                  </button>
-                );
-              })}
-            </section>
             {!warnings.length && !current.warningsStale && !current.warningsUnknown && warningBlock}
             <footer className="app-footer">
               <div>

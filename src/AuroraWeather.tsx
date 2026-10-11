@@ -52,8 +52,8 @@ function settings({ code, night, dark }: BackdropProps) {
         ? ['#26394d', '#456077', '#748998']
         : ['#1d3958', '#376786', '#849fae']
       : rain
-        ? ['#e5edf5', '#bccedc', '#f8fafc']
-        : ['#eaf4ff', '#b2d6ed', code === 1 ? '#fff1ce' : '#ffffff'];
+        ? ['#4a5d75', '#6a7f97', '#b4c2d1']
+        : ['#2a78d6', '#4f9be8', code === 1 ? '#ffe9a8' : '#d4e7fa'];
   return {
     colors: colors.map((hex) => [...new Color(hex)]),
     cloud: code === 1 ? 0.2 : fog ? 0.95 : 0.75,
