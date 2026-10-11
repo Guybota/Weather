@@ -375,6 +375,15 @@ h3 {
   padding: 26px 40px 28px;
   min-width: 0;
 }
+.location-swipe-snapshot {
+  z-index: 2;
+  overflow: clip;
+}
+:is(.location-swipe-snapshot, .main-content[data-location-slide]) *,
+.location-swipe-snapshot {
+  animation: none !important;
+  transition: none !important;
+}
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -1587,7 +1596,7 @@ h3 {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translate(var(--enter-x, 0), var(--enter-y, 12px));
+    transform: translateY(12px);
   }
 }
 .page-dots {
@@ -1719,7 +1728,6 @@ h3 {
   }
   .main-content {
     padding: 8px 20px calc(105px + env(safe-area-inset-bottom));
-    transition: transform 0.35s var(--ease);
   }
   /* Keeps sideways swipes for the app; not on the hourly panel, whose strip scrolls sideways. */
   .location-heading,
@@ -1731,11 +1739,20 @@ h3 {
   }
   .page-dots {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: 6px;
-    margin: -4px 0 12px;
+    gap: 0;
+    margin: -9px 0 7px;
   }
-  .page-dots i {
+  .page-dots button {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    min-height: 24px;
+    padding: 0;
+    border-radius: 50%;
+  }
+  .page-dots span {
     width: 6px;
     height: 6px;
     border-radius: 50%;
@@ -1743,7 +1760,7 @@ h3 {
     opacity: 0.35;
     transition: opacity 0.3s;
   }
-  .page-dots .active {
+  .page-dots .active span {
     opacity: 1;
   }
   .topbar {

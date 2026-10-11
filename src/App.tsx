@@ -31,6 +31,7 @@ import { DailyForecast, ForecastChart, SkyIllustration, WeatherIcon } from './co
 import { Sheet, FavoritePlaces, Compass, type Preview } from './ExperienceUI';
 import { WeatherBackdrop } from './WeatherBackdrop';
 import { usePageBounce } from './usePageBounce';
+import { useLocationSwipe } from './useLocationSwipe';
 import {
   dayInsight,
   localHour,
@@ -94,6 +95,7 @@ type Bundle = {
   observationsStale: boolean;
 };
 type InstallPrompt = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> };
+type ForecastPreview = Preview & { fetchedAt: string };
 
 export default function App() {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -124,7 +126,7 @@ export default function App() {
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
   const [installHelp, setInstallHelp] = useState(false);
   const [sheet, setSheet] = useState<'day' | 'places' | 'settings' | Indicator | null>(null);
-  const [previews, setPreviews] = useState<Record<number, Preview>>({});
+  const [previews, setPreviews] = useState<Record<number, ForecastPreview>>({});
   const [indicators, setIndicators] = useState<Indicator[]>(() =>
     validIndicators(stored('indicators', defaultIndicators)),
   );
@@ -154,6 +156,12 @@ export default function App() {
     setRefresh((r) => r + 1),
   );
   const pages = useRef({ ids: [] as number[], id: 0 });
+  const slideTo = useLocationSwipe(
+    mainRef,
+    pages,
+    showSearch || sheet !== null || installHelp,
+    choose,
+  );
   const loadedLocation = useRef<number | null>(null);
   const {
     needRefresh: [needRefresh],
@@ -257,6 +265,14 @@ export default function App() {
         const forecast = results[0];
         if (forecast.status !== 'fulfilled') throw forecast.reason;
         const parsedForecast = readForecast(forecast.value.data, location);
+        setPreviews((current) => ({
+          ...current,
+          [location.id]: {
+            forecast: parsedForecast,
+            stale: forecast.value.stale,
+            fetchedAt: forecast.value.fetchedAt,
+          },
+        }));
         loadedLocation.current = location.id;
         let warnings: Warning[] = [],
           observations: Observation[] = [],
@@ -311,78 +327,22 @@ export default function App() {
   useEffect(() => {
     if (showSearch) searchRef.current?.focus();
   }, [showSearch]);
-  useEffect(() => {
-    // Swipe sideways between saved places on phones, as in the iPhone Weather app.
-    const main = mainRef.current!;
-    let x = 0,
-      y = 0,
-      dx = 0,
-      active = false;
-    const neighbour = () => {
-      const { ids, id } = pages.current;
-      return ids[ids.indexOf(id) + (dx < 0 ? 1 : -1)];
-    };
-    const down = (e: TouchEvent) => {
-      x = e.touches[0].clientX;
-      y = e.touches[0].clientY;
-      dx = 0;
-      // Leave the screen edges to the system back gesture and scrubbable areas to themselves.
-      active =
-        e.touches.length === 1 &&
-        matchMedia('(max-width: 760px)').matches &&
-        x > 24 &&
-        x < innerWidth - 24 &&
-        !(e.target as Element).closest('.interactive-chart, .hour-strip, select, input');
-    };
-    const move = (e: TouchEvent) => {
-      if (!active) return;
-      const mx = e.touches[0].clientX - x;
-      if (!dx && Math.abs(mx) < 12) {
-        if (Math.abs(e.touches[0].clientY - y) > 12) active = false;
-        return;
-      }
-      dx = mx;
-      main.style.transition = 'none';
-      main.style.transform = `translateX(${dx * (neighbour() === undefined ? 0.25 : 1)}px)`;
-    };
-    const up = () => {
-      if (!dx) return;
-      const next = neighbour();
-      const go = Math.abs(dx) > 70 && next !== undefined;
-      // A completed swipe lets the new place slide in; a cancelled one eases back.
-      if (!go) main.style.transition = '';
-      main.style.transform = '';
-      if (go) {
-        navigator.vibrate?.(8);
-        choose(next, dx < 0 ? 1 : -1);
-        requestAnimationFrame(() => (main.style.transition = ''));
-      }
-      dx = 0;
-      active = false;
-    };
-    main.addEventListener('touchstart', down, { passive: true });
-    main.addEventListener('touchmove', move, { passive: true });
-    main.addEventListener('touchend', up);
-    main.addEventListener('touchcancel', up);
-    return () => {
-      main.removeEventListener('touchstart', down);
-      main.removeEventListener('touchmove', move);
-      main.removeEventListener('touchend', up);
-      main.removeEventListener('touchcancel', up);
-    };
-  }, []);
   const favoriteKey = [...favorites].sort().join(',');
   useEffect(() => {
     if (!locations.length) return;
     const controller = new AbortController();
-    const pending = locations.filter((l) => favorites.includes(l.id));
+    const pending = locations.filter((l) => favorites.includes(l.id) && l.id !== locationId);
     // Two concurrent requests keep a long list of saved places gentle on the IPMA proxy.
     const work = async () => {
       while (pending.length && !controller.signal.aborted) {
         const place = pending.shift()!;
         try {
           const result = await loadData(forecastPath(place), controller.signal);
-          const preview = { forecast: readForecast(result.data, place), stale: result.stale };
+          const preview = {
+            forecast: readForecast(result.data, place),
+            stale: result.stale,
+            fetchedAt: result.fetchedAt,
+          };
           if (!controller.signal.aborted)
             setPreviews((current) => ({ ...current, [place.id]: preview }));
         } catch {
@@ -534,10 +494,26 @@ export default function App() {
   const indicatorDetail =
     sheet && Object.hasOwn(indicatorNames, sheet) ? indicatorData[sheet as Indicator] : null;
 
-  // `slide` is the swipe direction: the new place then enters from that side instead of rising.
-  function choose(id: number, slide = 0) {
-    mainRef.current?.style.setProperty('--enter-x', slide * 60 + 'px');
-    mainRef.current?.style.setProperty('--enter-y', slide ? '0px' : '12px');
+  function choose(id: number) {
+    const preview = previews[id];
+    // Show the already-loaded forecast immediately, then revalidate in the background.
+    if (preview && Date.now() - Date.parse(preview.fetchedAt) < 20 * 60000) {
+      setBundle({
+        id,
+        forecast: preview.forecast,
+        fetchedAt: preview.fetchedAt,
+        stale: preview.stale,
+        warnings: bundle?.warnings ?? [],
+        observations: bundle?.observations ?? [],
+        warningsUnknown: bundle?.warningsUnknown ?? true,
+        warningsStale: bundle?.warningsStale ?? false,
+        observationsStale: bundle?.observationsStale ?? false,
+      });
+    }
+    if (id !== locationId) setLoading(true);
+    setDay('');
+    setSelectedHour(-1);
+    setError('');
     setLocationId(id);
     setShowSearch(false);
     setSearch('');
@@ -873,9 +849,17 @@ export default function App() {
           </button>
         </div>
         {pages.current.ids.length > 1 && (
-          <div className="page-dots" aria-hidden="true">
-            {pages.current.ids.map((id) => (
-              <i key={id} className={id === locationId ? 'active' : ''} />
+          <div className="page-dots" role="group" aria-label={t('Localidades favoritas')}>
+            {pages.current.ids.map((id, index) => (
+              <button
+                key={id}
+                className={id === locationId ? 'active' : ''}
+                aria-label={`${systemLanguage === 'pt' ? 'Ver previsão para' : 'View forecast for'} ${locations.find((place) => place.id === id)?.name}`}
+                aria-current={id === locationId ? 'location' : undefined}
+                onClick={() => slideTo(id, index > pages.current.ids.indexOf(locationId) ? 1 : -1)}
+              >
+                <span />
+              </button>
             ))}
           </div>
         )}
