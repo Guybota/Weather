@@ -371,8 +371,14 @@ h3 {
   background: #34c759;
   align-self: center;
 }
+.content-column {
+  min-width: 0;
+}
+.page-header {
+  padding: 26px 40px 0;
+}
 .main-content {
-  padding: 26px 40px 28px;
+  padding: 0 40px 28px;
   min-width: 0;
 }
 .location-swipe-snapshot,
@@ -1682,7 +1688,10 @@ h3 {
 }
 @media (min-width: 1400px) {
   .main-content {
-    padding: 28px 50px;
+    padding: 0 50px 28px;
+  }
+  .page-header {
+    padding: 28px 50px 0;
   }
   .dashboard {
     grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr);
@@ -1693,7 +1702,10 @@ h3 {
     grid-template-columns: 235px minmax(0, 1fr);
   }
   .main-content {
-    padding: 24px;
+    padding: 0 24px 24px;
+  }
+  .page-header {
+    padding: 24px 24px 0;
   }
   .sidebar {
     padding: 28px 18px;
@@ -1744,7 +1756,10 @@ h3 {
     display: none;
   }
   .main-content {
-    padding: 8px 20px calc(105px + env(safe-area-inset-bottom));
+    padding: 0 20px calc(105px + env(safe-area-inset-bottom));
+  }
+  .page-header {
+    padding: 8px 20px 0;
   }
   /* Keeps sideways swipes for the app; not on the hourly panel, whose strip scrolls sideways. */
   .location-heading,
@@ -1759,7 +1774,7 @@ h3 {
     flex-wrap: wrap;
     justify-content: center;
     gap: 0;
-    margin: -9px 0 7px;
+    margin: 0 0 8px;
   }
   .page-dots button {
     display: grid;
@@ -1768,22 +1783,28 @@ h3 {
     min-height: 24px;
     padding: 0;
     border-radius: 50%;
+    --location-weight: 0;
+    opacity: calc(0.35 + var(--location-weight) * 0.65);
+    transform: scale(calc(1 + var(--location-weight) * 0.12));
+    transition:
+      opacity 0.2s var(--ease),
+      transform 0.2s var(--ease);
+  }
+  .page-dots .active {
+    --location-weight: 1;
+  }
+  .page-dots[data-location-motion] button {
+    transition: none;
   }
   .page-dots span,
   .page-dots svg {
     color: var(--muted);
-    opacity: 0.35;
-    transition: opacity 0.3s;
   }
   .page-dots span {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: var(--muted);
-  }
-  .page-dots .active span,
-  .page-dots .active svg {
-    opacity: 1;
   }
   .topbar {
     margin-bottom: 16px;
@@ -2002,6 +2023,10 @@ h3 {
 }
 @media (max-width: 380px) {
   .main-content {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .page-header {
     padding-left: 14px;
     padding-right: 14px;
   }

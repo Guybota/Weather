@@ -9,6 +9,7 @@ export function useLocationSwipe(
   blocked: boolean,
   onChoose: (id: number) => void,
   onPreview?: (id: number | null) => HTMLElement | null,
+  indicatorRef?: RefObject<HTMLElement | null>,
 ) {
   const choose = useRef(onChoose);
   choose.current = onChoose;
@@ -40,6 +41,52 @@ export function useLocationSwipe(
     let pageWidth = 0;
     let animations: Animation[] = [];
     let generation = 0;
+
+    const indicators = () =>
+      Array.from(indicatorRef?.current?.querySelectorAll<HTMLElement>('[data-location-id]') ?? []);
+    const weights = () =>
+      new Map(
+        indicators().map((button) => [
+          Number(button.dataset.locationId),
+          button.style.getPropertyValue('--location-weight') === ''
+            ? Number(button.classList.contains('active'))
+            : Number(button.style.getPropertyValue('--location-weight')),
+        ]),
+      );
+    const paintIndicators = (next: number | undefined, progress: number) => {
+      if (!indicatorRef?.current || motion.matches) return;
+      indicatorRef.current.dataset.locationMotion = 'true';
+      const amount = next === undefined ? 0 : Math.min(1, Math.max(0, progress));
+      indicators().forEach((button) => {
+        const id = Number(button.dataset.locationId);
+        const weight = id === pages.current.id ? 1 - amount : id === next ? amount : 0;
+        button.style.setProperty('--location-weight', String(weight));
+      });
+    };
+    const animateIndicators = (
+      from: Map<number, number>,
+      target: number,
+      options: KeyframeAnimationOptions,
+    ) => {
+      if (!indicatorRef?.current) return [];
+      indicatorRef.current.dataset.locationMotion = 'true';
+      return indicators().flatMap((button) => {
+        const id = Number(button.dataset.locationId);
+        const start = from.get(id) ?? 0;
+        const end = Number(id === target);
+        button.style.setProperty('--location-weight', String(end));
+        if (start === end || !button.animate) return [];
+        return [
+          button.animate(
+            {
+              opacity: [0.35 + start * 0.65, 0.35 + end * 0.65],
+              transform: [`scale(${1 + start * 0.12})`, `scale(${1 + end * 0.12})`],
+            },
+            options,
+          ),
+        ];
+      });
+    };
 
     const width = () => main.getBoundingClientRect().width || innerWidth;
     const neighbour = () => {
@@ -87,6 +134,7 @@ export function useLocationSwipe(
             : Math.max(-width(), Math.min(width(), dx)),
       );
       main.style.willChange = motion.matches ? '' : 'transform';
+      paintIndicators(next, Math.abs(drawn) / width());
     };
     const clean = () => {
       generation++;
@@ -101,6 +149,8 @@ export function useLocationSwipe(
       dx = velocity = 0;
       paint(0);
       main.style.willChange = '';
+      indicators().forEach((button) => button.style.removeProperty('--location-weight'));
+      if (indicatorRef?.current) delete indicatorRef.current.dataset.locationMotion;
     };
     const finish = (running: Animation[]) => {
       const current = generation;
@@ -142,6 +192,7 @@ export function useLocationSwipe(
             options,
           ),
         );
+      running.push(...animateIndicators(weights(), pages.current.id, options));
       finish(running);
     };
     const slide = (id: number, direction: number) => {
@@ -158,6 +209,7 @@ export function useLocationSwipe(
       const rect = main.getBoundingClientRect();
       const pageWidth = width();
       const from = drawn;
+      const indicatorWeights = weights();
       // The old page is a short-lived inert visual, never a second interactive app.
       snapshot = main.cloneNode(true) as HTMLElement;
       snapshot.removeAttribute('id');
@@ -203,6 +255,7 @@ export function useLocationSwipe(
           { transform: [`translate3d(${incoming}px, 0, 0)`, 'translate3d(0, 0, 0)'] },
           options,
         ),
+        ...animateIndicators(indicatorWeights, id, options),
       ]);
       navigator.vibrate?.(8);
     };
@@ -308,7 +361,7 @@ export function useLocationSwipe(
       mobile.removeEventListener('change', clean);
       motion.removeEventListener('change', clean);
     };
-  }, [mainRef, pages, blocked]);
+  }, [mainRef, pages, blocked, indicatorRef]);
 
   return useCallback((id: number, direction: number) => transition.current(id, direction), []);
 }

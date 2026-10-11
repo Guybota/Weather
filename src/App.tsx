@@ -155,6 +155,7 @@ export default function App() {
   const pullRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const swipePreviewRef = useRef<HTMLElement>(null);
+  const pageDotsRef = useRef<HTMLDivElement>(null);
   const [swipePreviewId, setSwipePreviewId] = useState<number | null>(null);
   usePageBounce(mainRef, pullRef, showSearch || sheet !== null || installHelp, () =>
     setRefresh((r) => r + 1),
@@ -170,6 +171,7 @@ export default function App() {
       else flushSync(() => setSwipePreviewId(id));
       return id === null ? null : swipePreviewRef.current;
     },
+    pageDotsRef,
   );
   const loadedLocation = useRef<number | null>(null);
   const {
@@ -794,39 +796,6 @@ export default function App() {
         inert={preview ? true : undefined}
         aria-hidden={preview ? true : undefined}
       >
-        <header className="topbar">
-          <span className="today-date">
-            {new Intl.DateTimeFormat(locale(), {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-              timeZone: timezone,
-            }).format(now)}
-          </span>
-          <div className="topbar-actions glass-control">
-            <button
-              className="icon-button"
-              onClick={() => setRefresh((r) => r + 1)}
-              disabled={pageLoading || !online}
-              aria-label={t('Atualizar dados')}
-            >
-              <RefreshCw size={19} className={pageLoading ? 'spinning' : ''} />
-            </button>
-            <button
-              className="icon-button"
-              onClick={() => setSheet('settings')}
-              aria-label={t('Personalizar')}
-            >
-              <Settings2 size={20} />
-            </button>
-            {!installed && (
-              <button className="install-button" onClick={install} aria-label={t('Instalar app')}>
-                <Download size={18} />
-                <span>{t('Instalar app')}</span>
-              </button>
-            )}
-          </div>
-        </header>
         {needRefresh && (
           <div className="notice-banner">
             <Info size={18} />
@@ -899,25 +868,6 @@ export default function App() {
             <Star size={21} fill={isFavorite ? 'currentColor' : 'none'} />
           </button>
         </div>
-        {pages.current.ids.length > 1 && (
-          <div className="page-dots" role="group" aria-label={t('Localidades favoritas')}>
-            {pages.current.ids.map((id, index) => (
-              <button
-                key={id}
-                className={id === pageId ? 'active' : ''}
-                aria-label={`${systemLanguage === 'pt' ? 'Ver previsão para' : 'View forecast for'} ${locations.find((place) => place.id === id)?.name}`}
-                aria-current={id === pageId ? 'location' : undefined}
-                onClick={() => slideTo(id, index > pages.current.ids.indexOf(pageId) ? 1 : -1)}
-              >
-                {index === 0 ? (
-                  <House size={12} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
-                ) : (
-                  <span />
-                )}
-              </button>
-            ))}
-          </div>
-        )}
         {pageLoading && !current ? (
           <div className="skeleton" role="status">
             <span className="sr-only">{t('A carregar a previsão…')}</span>
@@ -1176,8 +1126,72 @@ export default function App() {
           </a>
         </div>
       </aside>
-      {renderPage(locationId)}
-      {swipePreviewId !== null && renderPage(swipePreviewId, true)}
+      <div className="content-column">
+        <header className="page-header">
+          {pages.current.ids.length > 1 && (
+            <div
+              ref={pageDotsRef}
+              className="page-dots"
+              role="group"
+              aria-label={t('Localidades favoritas')}
+            >
+              {pages.current.ids.map((id, index) => (
+                <button
+                  key={id}
+                  data-location-id={id}
+                  className={id === locationId ? 'active' : ''}
+                  aria-label={`${systemLanguage === 'pt' ? 'Ver previsão para' : 'View forecast for'} ${locations.find((place) => place.id === id)?.name}`}
+                  aria-current={id === locationId ? 'location' : undefined}
+                  onClick={() =>
+                    slideTo(id, index > pages.current.ids.indexOf(locationId) ? 1 : -1)
+                  }
+                >
+                  {index === 0 ? (
+                    <House size={12} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
+                  ) : (
+                    <span />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="topbar">
+            <span className="today-date">
+              {new Intl.DateTimeFormat(locale(), {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                timeZone: timezone,
+              }).format(now)}
+            </span>
+            <div className="topbar-actions glass-control">
+              <button
+                className="icon-button"
+                onClick={() => setRefresh((r) => r + 1)}
+                disabled={loading || !online}
+                aria-label={t('Atualizar dados')}
+              >
+                <RefreshCw size={19} className={loading ? 'spinning' : ''} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={() => setSheet('settings')}
+                aria-label={t('Personalizar')}
+              >
+                <Settings2 size={20} />
+              </button>
+              {!installed && (
+                <button className="install-button" onClick={install} aria-label={t('Instalar app')}>
+                  <Download size={18} />
+                  <span>{t('Instalar app')}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </header>
+        {renderPage(locationId)}
+        {swipePreviewId !== null && renderPage(swipePreviewId, true)}
+      </div>
       <nav
         className="mobile-navigation glass-control"
         aria-label={systemLanguage === 'pt' ? 'Navegação principal' : 'Main navigation'}

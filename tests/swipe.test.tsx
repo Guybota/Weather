@@ -339,6 +339,7 @@ it('shows a prefetched locality immediately while its next network request is st
   await screen.findByRole('heading', { name: 'Clear sky' });
   await waitFor(() => expect(screen.getByRole('button', { name: /Porto.*Today/ })).toBeTruthy());
   const hero = container.querySelector('main .weather-hero');
+  const header = container.querySelector('.page-header');
   vi.mocked(loadData).mockImplementationOnce(() => new Promise(() => {}));
   fireEvent.click(screen.getByRole('button', { name: 'View forecast for Porto' }));
   const main = container.querySelector('main')!;
@@ -346,8 +347,24 @@ it('shows a prefetched locality immediately while its next network request is st
   expect(main.querySelector('.skeleton')).toBeNull();
   expect(main.querySelector('.hero-range')!.textContent).toContain('26°');
   expect(main.querySelector('.weather-hero')).toBe(hero);
+  expect(container.querySelector('.page-header')).toBe(header);
+  expect(
+    container.querySelector(
+      '.location-swipe-snapshot .page-header, .location-swipe-snapshot .page-dots',
+    ),
+  ).toBeNull();
+  const markerAnimations = running.filter((animation) =>
+    animation.element.matches('[data-location-id]'),
+  );
+  expect(markerAnimations).toHaveLength(2);
+  expect(markerAnimations[0].frames.opacity).toEqual([1, 0.35]);
+  expect(markerAnimations[1].frames.opacity).toEqual([0.35, 1]);
   await finish();
   expect(main.querySelector('.weather-hero')).toBe(hero);
+  expect(header!.querySelector('[aria-current="location"]')!.getAttribute('data-location-id')).toBe(
+    '1131200',
+  );
+  expect(header!.querySelector('[data-location-motion]')).toBeNull();
 });
 
 it('previews the actual next forecast before release and uses a house for the first location', async () => {
@@ -355,7 +372,13 @@ it('previews the actual next forecast before release and uses a house for the fi
   await screen.findByRole('heading', { name: 'Clear sky' });
   await waitFor(() => expect(screen.getByRole('button', { name: /Porto.*Today/ })).toBeTruthy());
   const main = container.querySelector('main')!;
-  const dots = main.querySelector('.page-dots')!;
+  const header = container.querySelector('.page-header')!;
+  const dots = header.querySelector('.page-dots')!;
+  expect(main.querySelector('.topbar, .page-dots')).toBeNull();
+  expect(
+    dots.compareDocumentPosition(header.querySelector('.topbar')!) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   expect(dots.querySelector('button:first-child .lucide-house')).toBeTruthy();
   expect(dots.querySelector('button:nth-child(2) span')).toBeTruthy();
   const requests = vi.mocked(loadData).mock.calls.length;
@@ -368,10 +391,26 @@ it('previews the actual next forecast before release and uses a house for the fi
   expect(preview.hasAttribute('inert')).toBe(true);
   expect(preview.getAttribute('aria-hidden')).toBe('true');
   expect(preview.querySelector('#today, #forecast, #days')).toBeNull();
+  expect(preview.querySelector('.topbar, .page-dots')).toBeNull();
+  expect(container.querySelector('.page-header')).toBe(header);
+  const home = dots.querySelector<HTMLElement>('button:first-child')!;
+  const next = dots.querySelector<HTMLElement>('button:nth-child(2)')!;
+  expect(Number(home.style.getPropertyValue('--location-weight'))).toBeCloseTo(1 - 120 / 390);
+  expect(Number(next.style.getPropertyValue('--location-weight'))).toBeCloseTo(120 / 390);
   expect(within(main).getByRole('heading', { name: 'Lisboa' })).toBeTruthy();
   expect(vi.mocked(loadData).mock.calls).toHaveLength(requests);
   fireEvent.touchCancel(main, { touches: [] });
+  const markerAnimations = running.filter((animation) =>
+    animation.element.matches('[data-location-id]'),
+  );
+  expect(markerAnimations).toHaveLength(2);
+  expect(markerAnimations[0].frames.opacity).toEqual([0.35 + (1 - 120 / 390) * 0.65, 1]);
+  expect(markerAnimations[1].frames.opacity).toEqual([0.35 + (120 / 390) * 0.65, 0.35]);
   await finish();
   expect(container.querySelector('.location-swipe-preview')).toBeNull();
   expect(within(main).getByRole('heading', { name: 'Lisboa' })).toBeTruthy();
+  expect(home.style.getPropertyValue('--location-weight')).toBe('');
+  expect(next.style.getPropertyValue('--location-weight')).toBe('');
+  expect(home.getAttribute('aria-current')).toBe('location');
+  expect(dots.hasAttribute('data-location-motion')).toBe(false);
 });
