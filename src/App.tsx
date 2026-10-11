@@ -130,6 +130,8 @@ export default function App() {
   const [locating, setLocating] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const pullRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const pages = useRef({ ids: [] as number[], id: 0 });
   const loadedLocation = useRef<number | null>(null);
   const {
     needRefresh: [needRefresh],
@@ -288,6 +290,66 @@ export default function App() {
     if (showSearch) searchRef.current?.focus();
   }, [showSearch]);
   useEffect(() => {
+    // Swipe sideways between saved places on phones, as in the iPhone Weather app.
+    const main = mainRef.current!;
+    let x = 0,
+      y = 0,
+      dx = 0,
+      active = false;
+    const neighbour = () => {
+      const { ids, id } = pages.current;
+      return ids[ids.indexOf(id) + (dx < 0 ? 1 : -1)];
+    };
+    const down = (e: TouchEvent) => {
+      x = e.touches[0].clientX;
+      y = e.touches[0].clientY;
+      dx = 0;
+      // Leave the screen edges to the system back gesture and scrubbable areas to themselves.
+      active =
+        e.touches.length === 1 &&
+        matchMedia('(max-width: 760px)').matches &&
+        x > 24 &&
+        x < innerWidth - 24 &&
+        !(e.target as Element).closest('.interactive-chart, .hour-strip, select, input');
+    };
+    const move = (e: TouchEvent) => {
+      if (!active) return;
+      const mx = e.touches[0].clientX - x;
+      if (!dx && Math.abs(mx) < 12) {
+        if (Math.abs(e.touches[0].clientY - y) > 12) active = false;
+        return;
+      }
+      dx = mx;
+      main.style.transition = 'none';
+      main.style.transform = `translateX(${dx * (neighbour() === undefined ? 0.25 : 1)}px)`;
+    };
+    const up = () => {
+      if (!dx) return;
+      const next = neighbour();
+      const go = Math.abs(dx) > 70 && next !== undefined;
+      // A completed swipe lets the new place slide in; a cancelled one eases back.
+      if (!go) main.style.transition = '';
+      main.style.transform = '';
+      if (go) {
+        navigator.vibrate?.(8);
+        choose(next, dx < 0 ? 1 : -1);
+        requestAnimationFrame(() => (main.style.transition = ''));
+      }
+      dx = 0;
+      active = false;
+    };
+    main.addEventListener('touchstart', down, { passive: true });
+    main.addEventListener('touchmove', move, { passive: true });
+    main.addEventListener('touchend', up);
+    main.addEventListener('touchcancel', up);
+    return () => {
+      main.removeEventListener('touchstart', down);
+      main.removeEventListener('touchmove', move);
+      main.removeEventListener('touchend', up);
+      main.removeEventListener('touchcancel', up);
+    };
+  }, []);
+  useEffect(() => {
     // Pull to refresh: only from the top of the page, never while a panel is open.
     const indicator = pullRef.current!;
     let start = 0,
@@ -381,6 +443,8 @@ export default function App() {
   const warnings =
     current && location ? relevantWarnings(current.warnings, location.area, now) : [];
   const isFavorite = favorites.includes(locationId);
+  const saved = favorites.filter((id) => locations.some((l) => l.id === id));
+  pages.current = { ids: isFavorite ? saved : [locationId, ...saved], id: locationId };
   const shownLocations = locations.filter((l) =>
     l.name
       .normalize('NFD')
@@ -482,7 +546,10 @@ export default function App() {
   const indicatorDetail =
     sheet && Object.hasOwn(indicatorNames, sheet) ? indicatorData[sheet as Indicator] : null;
 
-  function choose(id: number) {
+  // `slide` is the swipe direction: the new place then enters from that side instead of rising.
+  function choose(id: number, slide = 0) {
+    mainRef.current?.style.setProperty('--enter-x', slide * 60 + 'px');
+    mainRef.current?.style.setProperty('--enter-y', slide ? '0px' : '12px');
     setLocationId(id);
     setShowSearch(false);
     setSearch('');
@@ -711,7 +778,7 @@ export default function App() {
           </a>
         </div>
       </aside>
-      <main className="main-content" id="today">
+      <main className="main-content" id="today" ref={mainRef}>
         <header className="topbar">
           <span className="today-date">
             {new Intl.DateTimeFormat(locale(), {
@@ -817,6 +884,13 @@ export default function App() {
             <Star size={21} fill={isFavorite ? 'currentColor' : 'none'} />
           </button>
         </div>
+        {pages.current.ids.length > 1 && (
+          <div className="page-dots" aria-hidden="true">
+            {pages.current.ids.map((id) => (
+              <i key={id} className={id === locationId ? 'active' : ''} />
+            ))}
+          </div>
+        )}
         {loading && !current ? (
           <div className="skeleton" role="status">
             <span className="sr-only">{t('A carregar a previsão…')}</span>

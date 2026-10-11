@@ -1555,8 +1555,11 @@ h3 {
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translate(var(--enter-x, 0), var(--enter-y, 12px));
   }
+}
+.page-dots {
+  display: none;
 }
 @keyframes grow {
   from {
@@ -1684,6 +1687,32 @@ h3 {
   }
   .main-content {
     padding: 8px 20px calc(105px + env(safe-area-inset-bottom));
+    transition: transform 0.35s var(--ease);
+  }
+  /* Keeps sideways swipes for the app; not on the hourly panel, whose strip scrolls sideways. */
+  .location-heading,
+  .weather-hero,
+  .day-insight,
+  .daily-panel,
+  .metrics {
+    touch-action: pan-y;
+  }
+  .page-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin: -4px 0 12px;
+  }
+  .page-dots i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    opacity: 0.35;
+    transition: opacity 0.3s;
+  }
+  .page-dots .active {
+    opacity: 1;
   }
   .topbar {
     margin-bottom: 16px;
