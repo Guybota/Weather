@@ -8,9 +8,12 @@ export function useLocationSwipe(
   pages: RefObject<LocationPages>,
   blocked: boolean,
   onChoose: (id: number) => void,
+  onPreview?: (id: number | null) => HTMLElement | null,
 ) {
   const choose = useRef(onChoose);
   choose.current = onChoose;
+  const preview = useRef(onPreview);
+  preview.current = onPreview;
   const transition = useRef<(id: number, direction: number) => void>(() => {});
 
   useEffect(() => {
@@ -31,6 +34,10 @@ export function useLocationSwipe(
     let frame = 0;
     let suppressClickUntil = 0;
     let snapshot: HTMLElement | null = null;
+    let adjacent: HTMLElement | null = null;
+    let adjacentId: number | undefined;
+    let adjacentDirection = 1;
+    let pageWidth = 0;
     let animations: Animation[] = [];
     let generation = 0;
 
@@ -42,13 +49,40 @@ export function useLocationSwipe(
     const paint = (x: number) => {
       drawn = x;
       main.style.transform = x ? `translate3d(${x}px, 0, 0)` : '';
+      if (adjacent)
+        adjacent.style.transform = `translate3d(${x + adjacentDirection * pageWidth}px, 0, 0)`;
+    };
+    const showAdjacent = (id: number | undefined, direction: number) => {
+      if (id === adjacentId) return;
+      if (adjacent) preview.current?.(null);
+      adjacent = null;
+      adjacentId = id;
+      if (id === undefined) return;
+      const rect = main.getBoundingClientRect();
+      pageWidth = width();
+      adjacentDirection = direction;
+      adjacent = preview.current?.(id) ?? null;
+      if (!adjacent) return;
+      Object.assign(adjacent.style, {
+        position: 'fixed',
+        top: `${rect.top}px`,
+        left: `${rect.left - drawn}px`,
+        width: `${pageWidth}px`,
+        minHeight: `${rect.height}px`,
+        margin: '0',
+        translate: 'none',
+        pointerEvents: 'none',
+        willChange: 'transform',
+      });
     };
     const drawDrag = () => {
+      const next = neighbour();
+      showAdjacent(motion.matches ? undefined : next, dx < 0 ? 1 : -1);
       const resisted = Math.sign(dx) * 64 * (1 - Math.exp(-Math.abs(dx) / 180));
       paint(
         motion.matches
           ? 0
-          : neighbour() === undefined
+          : next === undefined
             ? resisted
             : Math.max(-width(), Math.min(width(), dx)),
       );
@@ -62,6 +96,7 @@ export function useLocationSwipe(
       animations = [];
       snapshot?.remove();
       snapshot = null;
+      showAdjacent(undefined, 1);
       active = horizontal = busy = false;
       dx = velocity = 0;
       paint(0);
@@ -84,12 +119,30 @@ export function useLocationSwipe(
       active = horizontal = false;
       if (!drawn || motion.matches || !main.animate) return clean();
       busy = true;
-      finish([
+      const options: KeyframeAnimationOptions = {
+        duration: 320,
+        easing: 'cubic-bezier(0.22, 1.15, 0.36, 1)',
+        fill: 'forwards',
+      };
+      const running = [
         main.animate(
           { transform: [`translate3d(${drawn}px, 0, 0)`, 'translate3d(0, 0, 0)'] },
-          { duration: 320, easing: 'cubic-bezier(0.22, 1.15, 0.36, 1)', fill: 'forwards' },
+          options,
         ),
-      ]);
+      ];
+      if (adjacent)
+        running.push(
+          adjacent.animate(
+            {
+              transform: [
+                adjacent.style.transform,
+                `translate3d(${adjacentDirection * pageWidth}px, 0, 0)`,
+              ],
+            },
+            options,
+          ),
+        );
+      finish(running);
     };
     const slide = (id: number, direction: number) => {
       if (busy || id === pages.current.id || !pages.current.ids.includes(id)) return;
@@ -127,6 +180,7 @@ export function useLocationSwipe(
       main.parentElement!.append(snapshot);
       // The prefetched forecast is rendered before the incoming page starts moving.
       flushSync(() => choose.current(id));
+      showAdjacent(undefined, direction);
       const incoming = from + direction * pageWidth;
       paint(incoming);
       main.style.willChange = 'transform';

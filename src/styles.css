@@ -375,12 +375,15 @@ h3 {
   padding: 26px 40px 28px;
   min-width: 0;
 }
-.location-swipe-snapshot {
+.location-swipe-snapshot,
+.location-swipe-preview {
   z-index: 2;
   overflow: clip;
 }
 .location-swipe-snapshot *,
-.location-swipe-snapshot {
+.location-swipe-snapshot,
+.location-swipe-preview *,
+.location-swipe-preview {
   animation: none !important;
   transition: none !important;
 }
@@ -504,21 +507,21 @@ h3 {
     radial-gradient(ellipse at 78% 32%, #a4c1df44, transparent 48%),
     radial-gradient(ellipse at 54% 86%, #a4c1df33, transparent 42%);
 }
-[data-sky='sun'] .weather-backdrop {
+.main-content[data-sky='sun'] .weather-backdrop {
   background: radial-gradient(ellipse at 85% 26%, #ffe6a14d, transparent 60%);
 }
-[data-sky='night'] .weather-backdrop {
+.main-content[data-sky='night'] .weather-backdrop {
   background:
     radial-gradient(ellipse at 78% 32%, #a4c1df44, transparent 48%),
     radial-gradient(ellipse at 54% 86%, #a4c1df33, transparent 42%);
 }
-[data-sky='rain'] .weather-hero {
+.main-content[data-sky='rain'] .weather-hero {
   background: linear-gradient(135deg, #4a5d75, #6a7f97);
 }
 :root[data-theme='dark'] .weather-hero {
   background: linear-gradient(135deg, #1f3855, #294d68);
 }
-[data-sky='night'] .weather-hero {
+.main-content[data-sky='night'] .weather-hero {
   background: linear-gradient(130deg, #14233c, #2a4c6a);
 }
 .reading-label {
@@ -1752,15 +1755,20 @@ h3 {
     padding: 0;
     border-radius: 50%;
   }
+  .page-dots span,
+  .page-dots svg {
+    color: var(--muted);
+    opacity: 0.35;
+    transition: opacity 0.3s;
+  }
   .page-dots span {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: var(--muted);
-    opacity: 0.35;
-    transition: opacity 0.3s;
   }
-  .page-dots .active span {
+  .page-dots .active span,
+  .page-dots .active svg {
     opacity: 1;
   }
   .topbar {

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useLocationSwipe } from '../src/useLocationSwipe';
@@ -65,13 +66,25 @@ function Page({
   blocked?: boolean;
 }) {
   const [id, setId] = useState(2);
+  const [previewId, setPreviewId] = useState<number | null>(null);
+  const preview = useRef<HTMLElement>(null);
   const main = useRef<HTMLElement>(null);
   const pages = useRef({ ids: [1, 2, 3], id });
   pages.current.id = id;
-  const slideTo = useLocationSwipe(main, pages, blocked, (next) => {
-    onChoose(next);
-    setId(next);
-  });
+  const slideTo = useLocationSwipe(
+    main,
+    pages,
+    blocked,
+    (next) => {
+      onChoose(next);
+      setId(next);
+    },
+    (next) => {
+      if (next === null) setPreviewId(null);
+      else flushSync(() => setPreviewId(next));
+      return next === null ? null : preview.current;
+    },
+  );
   return (
     <div>
       <main ref={main} id="page">
@@ -83,6 +96,11 @@ function Page({
           <button onClick={() => slideTo(3, 1)}>Next place</button>
         </div>
       </main>
+      {previewId !== null && (
+        <main ref={preview} className="location-swipe-preview" inert aria-hidden="true">
+          <h1>Place {previewId}</h1>
+        </main>
+      )}
     </div>
   );
 }
@@ -162,6 +180,10 @@ it('continues the drag into simultaneous outgoing and incoming pages, then remov
   touch(main, 'touchStart', 230);
   move(main, 110, 250);
   expect(main.style.transform).toBe('translate3d(-120px, 0, 0)');
+  const preview = container.querySelector<HTMLElement>('.location-swipe-preview')!;
+  expect(preview.textContent).toContain('Place 3');
+  expect(preview.style.transform).toBe('translate3d(270px, 0, 0)');
+  expect(onChoose).not.toHaveBeenCalled();
   fireEvent.touchEnd(main, { touches: [] });
   expect(onChoose).toHaveBeenCalledWith(3);
   const snapshot = container.querySelector<HTMLElement>('.location-swipe-snapshot')!;
@@ -177,7 +199,33 @@ it('continues the drag into simultaneous outgoing and incoming pages, then remov
   expect(running[1].frames.transform).toEqual(['translate3d(270px, 0, 0)', 'translate3d(0, 0, 0)']);
   await finish();
   expect(container.querySelector('.location-swipe-snapshot')).toBeNull();
+  expect(container.querySelector('.location-swipe-preview')).toBeNull();
   expect(main.style.transform).toBe('');
+});
+
+it('reveals either neighbour during the drag and returns both pages on cancellation', async () => {
+  timers();
+  const onChoose = vi.fn();
+  const { container } = render(<Page onChoose={onChoose} />);
+  const main = container.querySelector('main')!;
+  touch(main, 'touchStart', 200);
+  move(main, 110, 200);
+  expect(container.querySelector('.location-swipe-preview')!.textContent).toContain('Place 3');
+  move(main, 275, 200);
+  const preview = container.querySelector<HTMLElement>('.location-swipe-preview')!;
+  expect(preview.textContent).toContain('Place 1');
+  expect(preview.style.transform).toBe('translate3d(-315px, 0, 0)');
+  expect(within(main).getByRole('heading').textContent).toBe('Place 2');
+  fireEvent.touchCancel(main, { touches: [] });
+  expect(running).toHaveLength(2);
+  expect(running[1].frames.transform).toEqual([
+    'translate3d(-315px, 0, 0)',
+    'translate3d(-390px, 0, 0)',
+  ]);
+  await finish();
+  expect(container.querySelector('.location-swipe-preview')).toBeNull();
+  expect(main.style.transform).toBe('');
+  expect(onChoose).not.toHaveBeenCalled();
 });
 
 it('accepts a quick short flick and cancels a short drag held still before release', async () => {
@@ -300,4 +348,30 @@ it('shows a prefetched locality immediately while its next network request is st
   expect(main.querySelector('.weather-hero')).toBe(hero);
   await finish();
   expect(main.querySelector('.weather-hero')).toBe(hero);
+});
+
+it('previews the actual next forecast before release and uses a house for the first location', async () => {
+  const { container } = render(<App />);
+  await screen.findByRole('heading', { name: 'Clear sky' });
+  await waitFor(() => expect(screen.getByRole('button', { name: /Porto.*Today/ })).toBeTruthy());
+  const main = container.querySelector('main')!;
+  const dots = main.querySelector('.page-dots')!;
+  expect(dots.querySelector('button:first-child .lucide-house')).toBeTruthy();
+  expect(dots.querySelector('button:nth-child(2) span')).toBeTruthy();
+  const requests = vi.mocked(loadData).mock.calls.length;
+  timers();
+  touch(main, 'touchStart', 230);
+  move(main, 110, 200);
+  const preview = container.querySelector<HTMLElement>('.location-swipe-preview')!;
+  expect(preview.querySelector('h1')!.textContent).toBe('Porto');
+  expect(preview.querySelector('.hero-range')!.textContent).toContain('26°');
+  expect(preview.hasAttribute('inert')).toBe(true);
+  expect(preview.getAttribute('aria-hidden')).toBe('true');
+  expect(preview.querySelector('#today, #forecast, #days')).toBeNull();
+  expect(within(main).getByRole('heading', { name: 'Lisboa' })).toBeTruthy();
+  expect(vi.mocked(loadData).mock.calls).toHaveLength(requests);
+  fireEvent.touchCancel(main, { touches: [] });
+  await finish();
+  expect(container.querySelector('.location-swipe-preview')).toBeNull();
+  expect(within(main).getByRole('heading', { name: 'Lisboa' })).toBeTruthy();
 });
