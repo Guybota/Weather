@@ -66,7 +66,6 @@ export function useLocationSwipe(
       dx = velocity = 0;
       paint(0);
       main.style.willChange = '';
-      delete main.dataset.locationSlide;
     };
     const finish = (running: Animation[]) => {
       const current = generation;
@@ -103,7 +102,6 @@ export function useLocationSwipe(
         return;
       }
       busy = true;
-      main.dataset.locationSlide = 'true';
       const rect = main.getBoundingClientRect();
       const pageWidth = width();
       const from = drawn;

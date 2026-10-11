@@ -178,7 +178,6 @@ it('continues the drag into simultaneous outgoing and incoming pages, then remov
   await finish();
   expect(container.querySelector('.location-swipe-snapshot')).toBeNull();
   expect(main.style.transform).toBe('');
-  expect(main.dataset.locationSlide).toBeUndefined();
 });
 
 it('accepts a quick short flick and cancels a short drag held still before release', async () => {
@@ -291,11 +290,14 @@ it('shows a prefetched locality immediately while its next network request is st
   const { container } = render(<App />);
   await screen.findByRole('heading', { name: 'Clear sky' });
   await waitFor(() => expect(screen.getByRole('button', { name: /Porto.*Today/ })).toBeTruthy());
+  const hero = container.querySelector('main .weather-hero');
   vi.mocked(loadData).mockImplementationOnce(() => new Promise(() => {}));
   fireEvent.click(screen.getByRole('button', { name: 'View forecast for Porto' }));
   const main = container.querySelector('main')!;
   expect(within(main).getByRole('heading', { name: 'Porto' })).toBeTruthy();
   expect(main.querySelector('.skeleton')).toBeNull();
   expect(main.querySelector('.hero-range')!.textContent).toContain('26°');
+  expect(main.querySelector('.weather-hero')).toBe(hero);
   await finish();
+  expect(main.querySelector('.weather-hero')).toBe(hero);
 });

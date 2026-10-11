@@ -379,7 +379,7 @@ h3 {
   z-index: 2;
   overflow: clip;
 }
-:is(.location-swipe-snapshot, .main-content[data-location-slide]) *,
+.location-swipe-snapshot *,
 .location-swipe-snapshot {
   animation: none !important;
   transition: none !important;
@@ -1592,7 +1592,7 @@ h3 {
     transform: rotate(360deg);
   }
 }
-/* Content remounts on each location change, so these replay as a staggered entrance. */
+/* Animate newly mounted content; keep the live page's animations intact during slides. */
 @keyframes rise {
   from {
     opacity: 0;
