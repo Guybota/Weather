@@ -36,6 +36,8 @@ npm run check:ipma
 
 ## Publicar na Cloudflare
 
+Worker deste projeto: `guybota`. Endereço publicado: [guybota.tempo-portugal.workers.dev](https://guybota.tempo-portugal.workers.dev/). O campo `name` em `wrangler.jsonc` deve coincidir com o nome do Worker na Cloudflare; `tempo-portugal` é o subdomínio da conta.
+
 1. Cria ou usa uma conta Cloudflare no plano Workers Free.
 2. Executa `npx wrangler login` para autenticar no browser.
 3. Executa `npm run deploy`. A Cloudflare fornece o endereço HTTPS `workers.dev`; não é necessário comprar um domínio.
