@@ -47,6 +47,8 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 24px;
+  /* Scrolling only: no pinch or double-tap zoom. */
+  touch-action: pan-x pan-y;
   /* The app has its own pull to refresh. */
   overscroll-behavior-y: contain;
 }
@@ -1335,7 +1337,8 @@ h3 {
   color: var(--ink);
   width: 100%;
   min-height: 48px;
-  font-size: 15px;
+  /* Below 16px, iOS zooms the page when the field takes focus. */
+  font-size: 16px;
   min-width: 0;
 }
 .search-results {
@@ -1901,8 +1904,9 @@ h3 {
   .detail-sheet.wide-sheet {
     width: 100%;
     max-width: none;
-    max-height: 92dvh;
-    margin: auto 0 0;
+    max-height: calc(92dvh - var(--keyboard, 0px));
+    margin: auto 0 var(--keyboard, 0px);
+    transition: margin 0.25s var(--ease);
     border-radius: 26px 26px 0 0;
     border-bottom: 0;
   }
@@ -1919,6 +1923,10 @@ h3 {
     margin: 0 auto -10px;
     touch-action: none;
     cursor: grab;
+  }
+  /* Keeps the search sheet a steady height while results filter. */
+  .search-panel {
+    min-height: 55dvh;
   }
   .sheet-header {
     padding: 15px 20px;

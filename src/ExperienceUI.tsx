@@ -57,6 +57,15 @@ export function Sheet({
     const overflow = document.body.style.overflow;
     dialog.showModal();
     document.body.style.overflow = 'hidden';
+    // iOS draws the keyboard over the page without resizing it; lift the sheet above it.
+    const viewport = window.visualViewport;
+    const keyboard = () =>
+      dialog.style.setProperty(
+        '--keyboard',
+        Math.max(0, innerHeight - viewport!.height - viewport!.offsetTop) + 'px',
+      );
+    viewport?.addEventListener('resize', keyboard);
+    viewport?.addEventListener('scroll', keyboard);
     let alive = true;
     let revert: (() => void) | undefined;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -102,6 +111,8 @@ export function Sheet({
     return () => {
       alive = false;
       motion.removeEventListener('change', animate);
+      viewport?.removeEventListener('resize', keyboard);
+      viewport?.removeEventListener('scroll', keyboard);
       revert?.();
       dialog.close();
       document.body.style.overflow = overflow;
