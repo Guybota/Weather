@@ -49,8 +49,8 @@ html {
   scroll-padding-top: 24px;
   /* Scrolling only: no pinch or double-tap zoom. */
   touch-action: pan-x pan-y;
-  /* The app has its own pull to refresh. */
-  overscroll-behavior-y: contain;
+  /* No rubber-band past the ends: it drags the sidebar away and shows blank space. The app has its own pull to refresh. */
+  overscroll-behavior: none;
 }
 body {
   margin: 0;
