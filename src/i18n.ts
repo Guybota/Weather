@@ -33,6 +33,10 @@ const messages: Record<string, string> = {
   'Usa a estrela junto ao nome da localidade para guardar o primeiro local.':
     'Tap the star next to a location to save your first place.',
   'Dados oficiais do IPMA': 'Official IPMA data',
+  'Previsão por Open-Meteo.com': 'Forecast by Open-Meteo.com',
+  'Fonte da previsão': 'Forecast source',
+  'Avisos e temperatura observada vêm sempre do IPMA.':
+    'Warnings and the observed temperature always come from IPMA.',
   'Visitar o IPMA': 'Visit IPMA',
   'Portugal continental': 'Mainland Portugal',
   Açores: 'Azores',

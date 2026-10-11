@@ -112,3 +112,50 @@ describe('IPMA data adapter', () => {
     expect(distanceKm(station, location)).toBe(0);
   });
 });
+
+describe('Open-Meteo', () => {
+  it('maps hourly and daily series onto forecast periods', async () => {
+    const { parseOpenMeteo } = await import('../src/weather');
+    const midnight = Date.parse('2026-10-11T23:00:00Z') / 1000; // 12 Oct, 00:00 in Lisbon
+    const periods = parseOpenMeteo(
+      {
+        daily: {
+          time: [midnight],
+          weather_code: [61],
+          temperature_2m_min: [14],
+          temperature_2m_max: [25],
+          precipitation_probability_max: [40],
+          uv_index_max: [4.3],
+        },
+        hourly: {
+          time: [midnight + 3600],
+          temperature_2m: [15.2],
+          precipitation_probability: [null],
+          relative_humidity_2m: [80],
+          wind_speed_10m: [12],
+          wind_direction_10m: [225],
+          weather_code: [0],
+        },
+      },
+      'Europe/Lisbon',
+    );
+    expect(periods).toHaveLength(2);
+    expect(periods[0]).toMatchObject({
+      interval: 24,
+      date: '2026-10-12',
+      min: 14,
+      max: 25,
+      rain: 40,
+      weather: 10,
+    });
+    expect(periods[1]).toMatchObject({
+      interval: 1,
+      date: '2026-10-12',
+      temperature: 15.2,
+      rain: null,
+      direction: 'SW',
+      weather: 1,
+    });
+    expect(() => parseOpenMeteo({ daily: { time: [] } })).toThrow();
+  });
+});

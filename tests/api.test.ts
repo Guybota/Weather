@@ -7,6 +7,11 @@ describe('Weather API', () => {
       'https://api.ipma.pt/public-data/forecast/aggregate/1110600.json',
     );
     expect(endpoint('/api/forecast/../../example.com')).toBeNull();
+    expect(endpoint('/api/open-meteo/38.70,-9.10')?.url).toContain(
+      'https://api.open-meteo.com/v1/forecast?latitude=38.70&longitude=-9.10&',
+    );
+    expect(endpoint('/api/open-meteo/38.70,-9.10&x=1')).toBeNull();
+    expect(endpoint('/api/open-meteo/example.com')).toBeNull();
     const upstream = vi.fn();
     expect(
       (

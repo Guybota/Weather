@@ -47,6 +47,7 @@ import {
   formatTime,
   nearestObservation,
   parseForecast,
+  parseOpenMeteo,
   parseLocations,
   parseObservations,
   parseWarnings,
@@ -128,6 +129,23 @@ export default function App() {
   );
   const [online, setOnline] = useState(navigator.onLine);
   const [locating, setLocating] = useState(false);
+  const [provider, setProvider] = useState<'ipma' | 'open-meteo'>(() =>
+    stored<string>('provider', 'ipma') === 'open-meteo' ? 'open-meteo' : 'ipma',
+  );
+  // Only the forecast changes with the provider; warnings, observations and places stay with IPMA.
+  const source = provider === 'ipma' ? 'IPMA' : 'Open-Meteo';
+  const forecastPath = (l: Location) =>
+    provider === 'ipma'
+      ? 'forecast/' + l.id
+      : `open-meteo/${l.latitude.toFixed(2)},${l.longitude.toFixed(2)}`;
+  const readForecast = (data: unknown, l: Location) =>
+    provider === 'ipma' ? parseForecast(data) : parseOpenMeteo(data, l.timezone);
+  function changeProvider(next: typeof provider) {
+    save('provider', next);
+    setBundle(null);
+    setPreviews({});
+    setProvider(next);
+  }
   const searchRef = useRef<HTMLInputElement>(null);
   const pullRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -226,7 +244,7 @@ export default function App() {
       setSelectedHour(-1);
     }
     Promise.allSettled(
-      ['forecast/' + location.id, 'warnings', 'observations'].map((path) =>
+      [forecastPath(location), 'warnings', 'observations'].map((path) =>
         loadData(path, controller.signal),
       ),
     )
@@ -234,7 +252,7 @@ export default function App() {
         if (controller.signal.aborted) return;
         const forecast = results[0];
         if (forecast.status !== 'fulfilled') throw forecast.reason;
-        const parsedForecast = parseForecast(forecast.value.data);
+        const parsedForecast = readForecast(forecast.value.data, location);
         loadedLocation.current = location.id;
         let warnings: Warning[] = [],
           observations: Observation[] = [],
@@ -279,7 +297,7 @@ export default function App() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [location?.id, refresh]);
+  }, [location?.id, refresh, provider]);
   useEffect(() => {
     const interval = setInterval(() => {
       if (navigator.onLine && document.visibilityState === 'visible') setRefresh((r) => r + 1);
@@ -388,15 +406,16 @@ export default function App() {
   useEffect(() => {
     if (!locations.length) return;
     const controller = new AbortController();
-    const pending = favorites.filter((id) => locations.some((l) => l.id === id));
+    const pending = locations.filter((l) => favorites.includes(l.id));
     // Two concurrent requests keep a long list of saved places gentle on the IPMA proxy.
     const work = async () => {
       while (pending.length && !controller.signal.aborted) {
-        const id = pending.shift()!;
+        const place = pending.shift()!;
         try {
-          const result = await loadData('forecast/' + id, controller.signal);
-          const preview = { forecast: parseForecast(result.data), stale: result.stale };
-          if (!controller.signal.aborted) setPreviews((current) => ({ ...current, [id]: preview }));
+          const result = await loadData(forecastPath(place), controller.signal);
+          const preview = { forecast: readForecast(result.data, place), stale: result.stale };
+          if (!controller.signal.aborted)
+            setPreviews((current) => ({ ...current, [place.id]: preview }));
         } catch {
           /* Each place can remain unavailable independently. */
         }
@@ -404,7 +423,7 @@ export default function App() {
     };
     void Promise.all([work(), work()]);
     return () => controller.abort();
-  }, [favoriteKey, locations.length, refresh]);
+  }, [favoriteKey, locations.length, refresh, provider]);
   useEffect(() => {
     save('indicators', indicators);
   }, [indicators]);
@@ -771,7 +790,7 @@ export default function App() {
         <div className="desktop-favorites">{favoriteList}</div>
         <div className="sidebar-bottom">
           <span className="source-dot" />
-          {t('Dados oficiais do IPMA')}
+          {t(provider === 'ipma' ? 'Dados oficiais do IPMA' : 'Previsão por Open-Meteo.com')}
           <a href="https://www.ipma.pt" target="_blank" rel="noreferrer">
             {t('Visitar o IPMA')}
             <ArrowUpRight size={15} />
@@ -1001,6 +1020,7 @@ export default function App() {
                     onMetric={setMetric}
                     selected={selectedHour}
                     onSelect={setSelectedHour}
+                    source={source}
                     now={now}
                   />
                   {selectedDay && !hoursForDay.length && (
@@ -1082,6 +1102,11 @@ export default function App() {
                 </a>
                 {updated && (
                   <span>{t('Previsão atualizada às ' + formatTime(updated, timezone))}</span>
+                )}
+                {provider !== 'ipma' && (
+                  <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
+                    {t('Previsão por Open-Meteo.com')}
+                  </a>
                 )}
               </div>
               <p>
@@ -1205,6 +1230,7 @@ export default function App() {
             onMetric={setMetric}
             selected={selectedHour}
             onSelect={setSelectedHour}
+            source={source}
             now={now}
           />
         </Sheet>
@@ -1220,8 +1246,8 @@ export default function App() {
             <span>{t(indicatorDetail.note)}</span>
           </div>
           {sheet === 'wind' && <Compass direction={nearestForecast?.direction ?? ''} />}
-          <p className="detail-copy">{t(indicatorDetail.text)}</p>
-          <p className="detail-source">{t(indicatorDetail.source)}</p>
+          <p className="detail-copy">{t(indicatorDetail.text).replaceAll('IPMA', source)}</p>
+          <p className="detail-source">{t(indicatorDetail.source).replaceAll('IPMA', source)}</p>
           {sheet === 'rain' && (
             <button
               className="primary-button"
@@ -1254,6 +1280,23 @@ export default function App() {
             </p>
             <small>{t('A língua e o tema seguem o sistema.')}</small>
           </div>
+          <h3 className="settings-heading">{t('Fonte da previsão')}</h3>
+          <div className="indicator-options">
+            {(['ipma', 'open-meteo'] as const).map((key) => (
+              <label key={key}>
+                <input
+                  type="radio"
+                  name="provider"
+                  checked={provider === key}
+                  onChange={() => changeProvider(key)}
+                />
+                {key === 'ipma' ? 'IPMA' : 'Open-Meteo'}
+              </label>
+            ))}
+          </div>
+          <small className="settings-note">
+            {t('Avisos e temperatura observada vêm sempre do IPMA.')}
+          </small>
           <h3 className="settings-heading">{t('Indicadores visíveis')}</h3>
           <div className="indicator-options">
             {(Object.keys(indicatorNames) as Indicator[]).map((key) => (

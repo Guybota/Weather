@@ -117,6 +117,85 @@ export function parseForecast(data: unknown): Period[] {
     throw new Error('A previsão diária está indisponível.');
   return result.sort((a, b) => a.at.localeCompare(b.at));
 }
+// Open-Meteo reports WMO codes; map them to IPMA weather types so icons and descriptions are shared.
+const wmo: Record<number, number> = {
+  0: 1,
+  1: 2,
+  2: 3,
+  3: 4,
+  45: 17,
+  48: 17,
+  51: 15,
+  53: 15,
+  55: 15,
+  56: 15,
+  57: 15,
+  61: 10,
+  63: 9,
+  65: 11,
+  66: 9,
+  67: 9,
+  71: 18,
+  73: 18,
+  75: 18,
+  77: 18,
+  80: 7,
+  81: 6,
+  82: 8,
+  85: 28,
+  86: 28,
+  95: 19,
+  96: 23,
+  99: 23,
+};
+export function parseOpenMeteo(data: unknown, timezone = 'UTC'): Period[] {
+  const { hourly, daily } = (data ?? {}) as Record<string, Record<string, unknown[]> | undefined>;
+  const times = (series?: Record<string, unknown[]>) =>
+    Array.isArray(series?.time) && series.time.every((t) => Number.isFinite(t))
+      ? (series.time as number[])
+      : [];
+  const days = times(daily),
+    hours = times(hourly);
+  if (!days.length) throw new Error('A previsão diária está indisponível.');
+  // Times are Unix seconds; a daily entry is stamped at local midnight.
+  const period = (seconds: number, interval: 1 | 24, code: unknown) => ({
+    at: new Date(seconds * 1000).toISOString(),
+    date: dateInZone(seconds * 1000, timezone),
+    interval,
+    updated: '',
+    temperature: null,
+    min: null,
+    max: null,
+    rain: null,
+    humidity: null,
+    wind: null,
+    direction: '',
+    uv: null,
+    weather: wmo[Number(code)] ?? 0,
+  });
+  const degrees = (value: unknown) => {
+    const n = numeric(value);
+    return n === null ? '' : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(n / 45) % 8];
+  };
+  const result: Period[] = [
+    ...days.map((t, i) => ({
+      ...period(t, 24, daily!.weather_code?.[i]),
+      min: numeric(daily!.temperature_2m_min?.[i]),
+      max: numeric(daily!.temperature_2m_max?.[i]),
+      rain: numeric(daily!.precipitation_probability_max?.[i]),
+      uv: numeric(daily!.uv_index_max?.[i]),
+    })),
+    ...hours.map((t, i) => ({
+      ...period(t, 1, hourly!.weather_code?.[i]),
+      temperature: numeric(hourly!.temperature_2m?.[i]),
+      rain: numeric(hourly!.precipitation_probability?.[i]),
+      humidity: numeric(hourly!.relative_humidity_2m?.[i]),
+      wind: numeric(hourly!.wind_speed_10m?.[i]),
+      direction: degrees(hourly!.wind_direction_10m?.[i]),
+    })),
+  ];
+  return result.sort((a, b) => a.at.localeCompare(b.at));
+}
 export function parseWarnings(data: unknown): Warning[] {
   if (!data || typeof data !== 'object') throw new Error('Avisos indisponíveis.');
   return rows((data as Row).data).flatMap((row) => {

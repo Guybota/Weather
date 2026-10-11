@@ -1,5 +1,6 @@
 import {
   parseForecast,
+  parseOpenMeteo,
   parseLocations,
   parseObservations,
   parseWarnings,
@@ -36,6 +37,17 @@ export function endpoint(path: string): { url: string; ttl: number } | null {
     '/api/warnings': ['public-data/warnings/warnings_www.json', 180],
     '/api/observations': ['open-data/observation/meteorology/stations/obs-surface.geojson', 600],
   };
+  // Coordinates are fixed to two decimals so the proxy only reaches one well-formed upstream URL.
+  const openMeteo = path.match(/^\/api\/open-meteo\/(-?\d{1,2}\.\d\d),(-?\d{1,3}\.\d\d)$/);
+  if (openMeteo)
+    return {
+      url:
+        `https://api.open-meteo.com/v1/forecast?latitude=${openMeteo[1]}&longitude=${openMeteo[2]}` +
+        '&hourly=temperature_2m,precipitation_probability,relative_humidity_2m,wind_speed_10m,wind_direction_10m,weather_code' +
+        '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max' +
+        '&timezone=auto&timeformat=unixtime&forecast_days=10',
+      ttl: 1200,
+    };
   const forecast = path.match(/^\/api\/forecast\/(\d{7})$/);
   const route = forecast
     ? ([`public-data/forecast/aggregate/${forecast[1]}.json`, 1200] as const)
@@ -71,7 +83,7 @@ export async function handleApi(
       signal: AbortSignal.timeout(8000),
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) throw new Error(`IPMA ${response.status}`);
+    if (!response.ok) throw new Error(`Upstream ${response.status}`);
     const body = await response.text();
     if (body.length > 5_000_000) throw new Error('Resposta demasiado grande.');
     const data: unknown = JSON.parse(body);
@@ -81,6 +93,7 @@ export async function handleApi(
     else if (url.pathname === '/api/warnings') parseWarnings(data);
     else if (url.pathname === '/api/observations') parseObservations(data);
     else if (url.pathname === '/api/weather-types') parseWeatherTypes(data);
+    else if (url.pathname.startsWith('/api/open-meteo/')) parseOpenMeteo(data);
     else parseForecast(data);
     const result = json({ data, fetchedAt: new Date().toISOString(), stale: false });
     // A separate last-good response survives the fresh TTL without claiming freshness.

@@ -123,9 +123,11 @@ export function ForecastChart({
   selected,
   onSelect,
   now,
+  source = 'IPMA',
 }: {
   periods: Period[];
   timezone: string;
+  source?: string;
   metric: 'temperature' | 'rain' | 'wind';
   onMetric: (metric: 'temperature' | 'rain' | 'wind') => void;
   selected: number;
@@ -469,7 +471,7 @@ export function ForecastChart({
               metric === 'rain'
                 ? 'Pontos: valores do IPMA. Tracejado: horas sem valor. Toca ou arrasta para consultar; “—” significa sem dados.'
                 : 'Toca ou arrasta no gráfico. As setas do teclado também mudam a hora. “—” indica um valor não fornecido pelo IPMA.',
-            )}
+            ).replaceAll('IPMA', source)}
           </p>
         </>
       ) : (
@@ -478,7 +480,7 @@ export function ForecastChart({
             periods.length
               ? 'Este parâmetro não está disponível para o dia selecionado.'
               : 'O IPMA disponibiliza apenas previsão diária para este dia. Consulta o resumo diário.',
-          )}
+          ).replaceAll('IPMA', source)}
         </div>
       )}
     </div>
