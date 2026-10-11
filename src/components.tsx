@@ -1,16 +1,4 @@
-import {
-  Cloud,
-  CloudFog,
-  CloudLightning,
-  CloudRain,
-  CloudSnow,
-  CloudSun,
-  Sun,
-  Moon,
-  CloudMoon,
-  Wind,
-  Droplets,
-} from 'lucide-react';
+import { Sun, Wind, Droplets } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { dateInZone, formatDay, formatTime, value, type Period } from './weather';
 import { localHour } from './experience';
@@ -27,31 +15,55 @@ export function WeatherIcon({
   className?: string;
   night?: boolean;
 }) {
-  const Icon =
-    code === 1
-      ? night
-        ? Moon
-        : Sun
-      : [2, 3, 5, 25].includes(code)
-        ? night
-          ? CloudMoon
-          : CloudSun
-        : [16, 17, 26].includes(code)
-          ? CloudFog
-          : [18, 21, 22, 28, 29, 30].includes(code)
-            ? CloudSnow
-            : [19, 20, 23].includes(code)
-              ? CloudLightning
-              : code >= 6 && code <= 15
-                ? CloudRain
-                : Cloud;
+  // Filled, multicolour glyphs so conditions read at a glance; colours live in styles.css.
+  const clear = code === 1,
+    partly = [2, 3, 5, 25].includes(code),
+    fog = [16, 17, 26].includes(code),
+    snow = [18, 21, 22, 28, 29, 30].includes(code),
+    thunder = [19, 20, 23].includes(code),
+    rain = code >= 6 && code <= 15;
+  const cloudY = fog || snow || thunder || rain ? 0.5 : partly ? 5.5 : 3.3;
   return (
-    <Icon
+    <svg
       className={`weather-icon ${className}`}
-      size={size}
-      strokeWidth={1.6}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
       aria-hidden="true"
-    />
+    >
+      {(clear || partly) && (
+        <g
+          className={night ? 'icon-moon' : 'icon-sun'}
+          transform={partly ? 'translate(9.5 0.5) scale(0.6)' : undefined}
+        >
+          {night ? (
+            <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+          ) : (
+            <>
+              <circle cx="12" cy="12" r="4.6" />
+              <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" />
+            </>
+          )}
+        </g>
+      )}
+      {!clear && (
+        <path
+          className="icon-cloud"
+          transform={`translate(-1.6 ${cloudY}) scale(0.085)`}
+          d="M101 152c-27 0-47-18-47-41 0-23 19-40 42-40 7 0 13 1 19 4a55 55 0 0 1 106 23c25-2 44 9 44 29 0 15-12 25-31 25Z"
+        />
+      )}
+      {rain && <path className="icon-rain" d="M8 16.5l-1.2 3M12.5 16.5l-1.2 3M17 16.5l-1.2 3" />}
+      {snow && (
+        <g className="icon-snow">
+          <circle cx="7.5" cy="18" r="1.1" />
+          <circle cx="12" cy="19.5" r="1.1" />
+          <circle cx="16.5" cy="18" r="1.1" />
+        </g>
+      )}
+      {thunder && <path className="icon-bolt" d="M12.5 14l-3 4.5h2.6l-1.2 4 4.2-5.5h-2.7l1.3-3Z" />}
+      {fog && <path className="icon-fog" d="M5 17h14M7 20h12" />}
+    </svg>
   );
 }
 
