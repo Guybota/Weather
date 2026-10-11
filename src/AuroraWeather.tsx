@@ -65,6 +65,7 @@ function settings({ code, night, dark }: BackdropProps) {
 export default function AuroraWeather(props: BackdropProps) {
   const ref = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
+  const refresh = useRef<() => void>(() => {});
   latest.current = props;
   useEffect(() => {
     const host = ref.current!;
@@ -126,7 +127,7 @@ export default function AuroraWeather(props: BackdropProps) {
       }
     };
     const tick = (time: number) => {
-      if (!visible || document.hidden || lost) {
+      if (!visible || document.hidden || lost || latest.current.animate === false) {
         frame = 0;
         return;
       }
@@ -139,7 +140,7 @@ export default function AuroraWeather(props: BackdropProps) {
       frame = requestAnimationFrame(tick);
     };
     const sync = () => {
-      if (visible && !document.hidden && !lost) {
+      if (visible && !document.hidden && !lost && latest.current.animate !== false) {
         if (!frame) {
           last = 0;
           frame = requestAnimationFrame(tick);
@@ -172,8 +173,13 @@ export default function AuroraWeather(props: BackdropProps) {
     };
     canvas.addEventListener('webglcontextlost', onLost);
     document.addEventListener('visibilitychange', sync);
+    refresh.current = () => {
+      render();
+      sync();
+    };
     resize();
     return () => {
+      refresh.current = () => {};
       cancelAnimationFrame(frame);
       observer.disconnect();
       size.disconnect();
@@ -185,5 +191,8 @@ export default function AuroraWeather(props: BackdropProps) {
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, []);
+  useEffect(() => {
+    refresh.current();
+  }, [props.code, props.night, props.dark, props.animate]);
   return <div ref={ref} className="aurora-weather" />;
 }

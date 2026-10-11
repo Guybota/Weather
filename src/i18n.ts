@@ -118,6 +118,9 @@ const messages: Record<string, string> = {
   Temperatura: 'Temperature',
   'Métrica do gráfico': 'Chart metric',
   'Previsão horária': 'Hourly forecast',
+  'Sem dados entre pontos': 'Missing values between points',
+  'Pontos: valores do IPMA. Tracejado: horas sem valor. Toca ou arrasta para consultar; “—” significa sem dados.':
+    'Dots: IPMA values. Dashed lines: hours without values. Tap or drag to explore; “—” means no data.',
   'Intervalo de 3 horas': '3-hour interval',
   Agora: 'Now',
   'Hora da previsão': 'Forecast time',

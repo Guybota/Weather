@@ -11,7 +11,7 @@ import {
   Wind,
   Droplets,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { dateInZone, formatDay, formatTime, value, type Period } from './weather';
 import { localHour } from './experience';
 import { t, language } from './i18n';
@@ -126,6 +126,7 @@ export function ForecastChart({
     wind: { label: 'Vento', unit: 'km/h', icon: Wind },
   };
   const info = metricInfo[metric];
+  const rainGradientId = useId();
   const description =
     language() === 'en'
       ? `${t(info.label)} forecast`
@@ -168,6 +169,15 @@ export function ForecastChart({
     left +
     ((Date.parse(periods[i].at) - start) / Math.max(1, end - start)) * (width - left - right);
   const y = (n: number) => top + ((high - n) / (high - low)) * (height - top - bottom);
+  const rainPoints = values.flatMap((n, i) => (n === null ? [] : [{ i, n, x: x(i), y: y(n) }]));
+  const rainLinks = rainPoints.slice(1).map((point, i) => {
+    const previous = rainPoints[i];
+    const gap =
+      point.i !== previous.i + 1 ||
+      Date.parse(periods[point.i].at) - Date.parse(periods[previous.i].at) >
+        Math.max(periods[point.i].interval, periods[previous.i].interval) * 3_600_000 + 1000;
+    return { previous, point, gap };
+  });
   let path = '',
     connected = false;
   values.forEach((n, i) => {
@@ -263,8 +273,16 @@ export function ForecastChart({
               className="forecast-chart"
               viewBox={`0 0 ${width} ${height}`}
               role="img"
-              aria-label={`${description} (${info.unit}). ${t('Ao longo do dia')}.`}
+              aria-label={`${metric === 'rain' ? t('Probabilidade de chuva') : description} (${info.unit}). ${t('Ao longo do dia')}.`}
             >
+              {metric === 'rain' && (
+                <defs>
+                  <linearGradient id={rainGradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.36" />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.025" />
+                  </linearGradient>
+                </defs>
+              )}
               {hasNow && (
                 <rect
                   x={left}
@@ -286,20 +304,34 @@ export function ForecastChart({
                 );
               })}
               {metric === 'rain' ? (
-                values.map(
-                  (n, i) =>
-                    n !== null && (
-                      <rect
-                        key={i}
-                        x={x(i) - 5}
-                        y={y(n)}
-                        width="10"
-                        height={Math.max(1, y(0) - y(n))}
-                        rx="3"
-                        className="chart-bar"
-                      />
-                    ),
-                )
+                <g className="rain-series">
+                  {rainLinks.map(({ previous: a, point: b, gap }) => (
+                    <path
+                      key={`area-${b.i}`}
+                      d={`M${a.x},${a.y}L${b.x},${b.y}L${b.x},${y(0)}L${a.x},${y(0)}Z`}
+                      fill={`url(#${rainGradientId})`}
+                      opacity={gap ? 0.45 : 1}
+                    />
+                  ))}
+                  {rainLinks.map(({ previous: a, point: b, gap }) => (
+                    <path
+                      key={`line-${b.i}`}
+                      d={`M${a.x},${a.y}L${b.x},${b.y}`}
+                      className={`chart-line rain-link ${gap ? 'rain-link-gap' : ''}`}
+                    />
+                  ))}
+                  {rainPoints.map((point) => (
+                    <circle
+                      key={point.i}
+                      cx={point.x}
+                      cy={point.y}
+                      r="3.3"
+                      className="rain-sample"
+                      data-time={periods[point.i].at}
+                      data-probability={point.n}
+                    />
+                  ))}
+                </g>
               ) : (
                 <path d={path} className="chart-line" />
               )}
@@ -316,18 +348,20 @@ export function ForecastChart({
                   </text>
                 </g>
               )}
-              {chosen && chosen[metric] !== null && (
+              {chosen && (
                 <>
                   <path
                     d={`M${x(Math.min(selected, periods.length - 1))} ${top}V${height - bottom}`}
                     className="chart-cursor"
                   />
-                  <circle
-                    cx={x(Math.min(selected, periods.length - 1))}
-                    cy={y(chosen[metric]!)}
-                    r="5"
-                    className="chart-dot"
-                  />
+                  {chosen[metric] !== null && (
+                    <circle
+                      cx={x(Math.min(selected, periods.length - 1))}
+                      cy={y(chosen[metric]!)}
+                      r="5"
+                      className="chart-dot"
+                    />
+                  )}
                 </>
               )}
               {periods.map((p, i) => {
@@ -346,6 +380,20 @@ export function ForecastChart({
               })}
             </svg>
           </div>
+          {metric === 'rain' && (
+            <div className="rain-chart-legend">
+              <span>
+                <i className="rain-legend-point" />
+                {t('Probabilidade de chuva')}
+              </span>
+              {rainLinks.some((link) => link.gap) && (
+                <span>
+                  <i className="rain-legend-gap" />
+                  {t('Sem dados entre pontos')}
+                </span>
+              )}
+            </div>
+          )}
           <div className="hour-details" aria-live="polite">
             <span>
               {t('Temperatura')}
@@ -379,7 +427,9 @@ export function ForecastChart({
           </div>
           <p className="chart-caption">
             {t(
-              'Toca ou arrasta no gráfico. As setas do teclado também mudam a hora. “—” indica um valor não fornecido pelo IPMA.',
+              metric === 'rain'
+                ? 'Pontos: valores do IPMA. Tracejado: horas sem valor. Toca ou arrasta para consultar; “—” significa sem dados.'
+                : 'Toca ou arrasta no gráfico. As setas do teclado também mudam a hora. “—” indica um valor não fornecido pelo IPMA.',
             )}
           </p>
         </>
