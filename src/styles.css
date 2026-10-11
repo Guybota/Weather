@@ -49,7 +49,7 @@ html {
   scroll-padding-top: 24px;
   /* Scrolling only: no pinch or double-tap zoom. */
   touch-action: pan-x pan-y;
-  /* No rubber-band past the ends: it drags the sidebar away and shows blank space. The app has its own pull to refresh. */
+  /* The content supplies its own bounce, keeping navigation and the sky stationary. */
   overscroll-behavior: none;
 }
 body {
@@ -159,6 +159,8 @@ h3 {
   color: var(--muted);
 }
 .app-shell {
+  /* Elastic translation must not increase the document's scroll range. */
+  overflow: clip;
   max-width: 1520px;
   margin: auto;
   display: grid;

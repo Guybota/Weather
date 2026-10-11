@@ -30,6 +30,7 @@ import { loadData } from './api';
 import { DailyForecast, ForecastChart, SkyIllustration, WeatherIcon } from './components';
 import { Sheet, FavoritePlaces, Compass, type Preview } from './ExperienceUI';
 import { WeatherBackdrop } from './WeatherBackdrop';
+import { usePageBounce } from './usePageBounce';
 import {
   dayInsight,
   localHour,
@@ -149,6 +150,9 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   const pullRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
+  usePageBounce(mainRef, pullRef, showSearch || sheet !== null || installHelp, () =>
+    setRefresh((r) => r + 1),
+  );
   const pages = useRef({ ids: [] as number[], id: 0 });
   const loadedLocation = useRef<number | null>(null);
   const {
@@ -365,41 +369,6 @@ export default function App() {
       main.removeEventListener('touchmove', move);
       main.removeEventListener('touchend', up);
       main.removeEventListener('touchcancel', up);
-    };
-  }, []);
-  useEffect(() => {
-    // Pull to refresh: only from the top of the page, never while a panel is open.
-    const indicator = pullRef.current!;
-    let start = 0,
-      pull = 0;
-    const set = (distance: number) => {
-      pull = distance;
-      indicator.style.transition = distance ? 'none' : '';
-      indicator.style.setProperty('--pull', String(distance));
-    };
-    const down = (e: TouchEvent) => {
-      start = scrollY <= 0 && !document.querySelector('dialog[open]') ? e.touches[0].clientY : 0;
-    };
-    const move = (e: TouchEvent) => {
-      if (start) set(Math.max(0, Math.min(90, (e.touches[0].clientY - start) * 0.5)));
-    };
-    const up = () => {
-      if (pull >= 60 && navigator.onLine) {
-        navigator.vibrate?.(10);
-        setRefresh((r) => r + 1);
-      }
-      if (pull) set(0);
-      start = 0;
-    };
-    window.addEventListener('touchstart', down, { passive: true });
-    window.addEventListener('touchmove', move, { passive: true });
-    window.addEventListener('touchend', up);
-    window.addEventListener('touchcancel', up);
-    return () => {
-      window.removeEventListener('touchstart', down);
-      window.removeEventListener('touchmove', move);
-      window.removeEventListener('touchend', up);
-      window.removeEventListener('touchcancel', up);
     };
   }, []);
   const favoriteKey = [...favorites].sort().join(',');
