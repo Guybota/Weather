@@ -28,6 +28,7 @@ import {
 import { loadData } from './api';
 import { DailyForecast, ForecastChart, SkyIllustration, WeatherIcon } from './components';
 import { Sheet, FavoritePlaces, Compass, type Preview } from './ExperienceUI';
+import { WeatherBackdrop } from './WeatherBackdrop';
 import {
   dayInsight,
   localHour,
@@ -804,6 +805,7 @@ export default function App() {
             {(warnings.length > 0 || current.warningsStale || current.warningsUnknown) &&
               warningBlock}
             <section className="weather-hero" aria-label={t('Resumo do tempo')}>
+              <WeatherBackdrop code={skyCode} night={night} dark={theme === 'dark'} />
               <div className="hero-reading">
                 <span className="reading-label">
                   {t(observation ? 'Temperatura observada' : 'Temperatura prevista')}

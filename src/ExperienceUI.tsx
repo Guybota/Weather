@@ -27,7 +27,52 @@ export function Sheet({
     const overflow = document.body.style.overflow;
     dialog.showModal();
     document.body.style.overflow = 'hidden';
+    let alive = true;
+    let revert: (() => void) | undefined;
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    const animate = () => {
+      revert?.();
+      revert = undefined;
+      if (motion.matches) return;
+      // GSAP executes on first use, without blocking the dialog or its focus.
+      void import('gsap')
+        .then(({ gsap }) => {
+          if (!alive || motion.matches) return;
+          revert?.();
+          const context = gsap.context(() => {
+            const mobile = matchMedia('(max-width: 620px)').matches;
+            gsap
+              .timeline({ defaults: { ease: 'power3.out' } })
+              .fromTo(
+                dialog,
+                { y: mobile ? 28 : 10, opacity: 0.7 },
+                { y: 0, opacity: 1, duration: 0.24, clearProps: 'transform,opacity' },
+              )
+              .fromTo(
+                '.sheet-header, .sheet-content',
+                { y: 6, opacity: 0.8 },
+                {
+                  y: 0,
+                  opacity: 1,
+                  duration: 0.18,
+                  stagger: 0.025,
+                  clearProps: 'transform,opacity',
+                },
+                0.04,
+              );
+          }, dialog);
+          revert = () => context.revert();
+        })
+        .catch(() => {
+          /* Panels remain usable if animation cannot load. */
+        });
+    };
+    animate();
+    motion.addEventListener('change', animate);
     return () => {
+      alive = false;
+      motion.removeEventListener('change', animate);
+      revert?.();
       dialog.close();
       document.body.style.overflow = overflow;
     };

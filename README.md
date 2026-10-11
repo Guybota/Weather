@@ -10,6 +10,10 @@ A direção visual segue as orientações da Apple sobre [layout](https://develo
 
 Na Web, a língua é fornecida por `navigator.language` e a aparência por `prefers-color-scheme`. A app responde aos eventos de alteração destas preferências; uma preferência manual de tema guardada por versões anteriores não substitui o sistema.
 
+O cartão meteorológico tem um fundo WebGL adaptado do [Aurora do React Bits](https://reactbits.dev/backgrounds/aurora), com nuvens suaves e precipitação decorativa conforme o código de condição do IPMA. Mantém a ilustração explícita da condição; o efeito não representa uma quantidade de precipitação. O fundo carrega num módulo separado, limita a resolução a 960 px de largura e a animação a 24 fps, e pausa fora do ecrã ou com a página oculta. Redução de movimento, cores forçadas, poupança de dados, falta de WebGL ou falha de carregamento usam o céu estático em CSS. A licença e atribuição do código adaptado estão em [third-party/react-bits-LICENSE.md](third-party/react-bits-LICENSE.md).
+
+O GSAP carrega ao abrir o primeiro painel e coordena uma entrada de 240 ms com o conteúdo. A abertura, o foco, Escape e fecho continuam a usar o diálogo nativo. As animações são canceladas e limpas ao fechar o painel ou ativar redução de movimento.
+
 ## Desenvolvimento
 
 Node.js 22.12+ (ou 24) e npm.

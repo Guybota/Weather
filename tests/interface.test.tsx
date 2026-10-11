@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from '../src/App';
 import { ForecastChart } from '../src/components';
 import { parseForecast } from '../src/weather';
+import { WeatherBackdrop } from '../src/WeatherBackdrop';
 
 vi.mock('../src/api', () => ({
   loadData: vi.fn(async (path: string) => ({
@@ -46,15 +47,21 @@ vi.mock('../src/api', () => ({
   })),
 }));
 let dark = false;
+let reducedMotion = false;
 let listeners: Set<() => void>;
 beforeEach(() => {
   localStorage.clear();
   listeners = new Set();
   dark = false;
+  reducedMotion = false;
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   vi.stubGlobal('navigator', { language: 'en-US', onLine: true });
   vi.stubGlobal('matchMedia', (query: string) => ({
     get matches() {
-      return query.includes('prefers-color-scheme') && dark;
+      return (
+        (query.includes('prefers-color-scheme') && dark) ||
+        (query.includes('prefers-reduced-motion') && reducedMotion)
+      );
     },
     addEventListener: (_name: string, fn: () => void) => listeners.add(fn),
     removeEventListener: (_name: string, fn: () => void) => listeners.delete(fn),
@@ -75,7 +82,36 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+it('keeps the static sky without requesting WebGL when motion is reduced', async () => {
+  reducedMotion = true;
+  const { container } = render(<WeatherBackdrop code={4} night={false} dark={false} />);
+  await act(async () => {});
+  expect(container.querySelector('.weather-backdrop')).toBeTruthy();
+  expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();
+  expect(container.querySelector('canvas')).toBeNull();
+});
+it('keeps weather and native panels usable when WebGL is unavailable', async () => {
+  render(<App />);
+  await screen.findByRole('heading', { name: 'Cloudy' });
+  await waitFor(() => expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: /Today: Cloudy/ }));
+  expect(screen.getByRole('dialog', { name: 'Today' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Cloudy' })).toBeTruthy();
+});
+it('removes the animated layer when system reduced motion changes', async () => {
+  const { container } = render(<WeatherBackdrop code={4} night={false} dark={false} />);
+  await waitFor(() => expect(container.querySelector('.aurora-weather')).toBeTruthy());
+  act(() => {
+    reducedMotion = true;
+    listeners.forEach((fn) => fn());
+  });
+  expect(container.querySelector('.aurora-weather')).toBeNull();
+  expect(container.querySelector('.weather-backdrop')).toBeTruthy();
 });
 it('ignores an old manual theme and responds to system appearance changes', async () => {
   localStorage.setItem('tempo:theme', JSON.stringify('dark'));
