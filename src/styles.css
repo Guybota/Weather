@@ -343,8 +343,10 @@ h3 {
 .topbar-actions {
   display: flex;
   align-items: center;
-  padding: 2px 4px;
-  border-radius: 28px;
+  /* Equal inset keeps the round hover highlight concentric with the pill's ends. */
+  padding: 4px;
+  gap: 2px;
+  border-radius: 999px;
   flex-shrink: 0;
 }
 .icon-button {
@@ -356,7 +358,9 @@ h3 {
   border-radius: 50%;
   color: var(--muted);
 }
-.icon-button:hover {
+/* :active gives touch screens the same highlight that hover gives a pointer. */
+.icon-button:hover,
+.icon-button:active:not(:disabled) {
   background: var(--soft);
   color: var(--accent);
 }
@@ -368,6 +372,11 @@ h3 {
   min-height: 44px;
   font-size: 12px;
   color: var(--accent);
+  border-radius: 999px;
+}
+.install-button:hover,
+.install-button:active {
+  background: var(--soft);
 }
 .location-heading {
   display: flex;
@@ -1602,7 +1611,7 @@ h3 {
     line-height: 1.5;
   }
   .topbar-actions {
-    padding: 0 2px;
+    padding: 3px;
   }
   .install-button {
     padding: 0 10px;
