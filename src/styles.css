@@ -13,6 +13,8 @@
   --glass: rgba(255, 255, 255, 0.86);
   --sun: #d89628;
   --shadow: 0 8px 30px rgba(29, 52, 85, 0.04);
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   color: var(--ink);
   background: var(--bg);
   color-scheme: light;
@@ -36,6 +38,8 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 24px;
+  /* The app has its own pull to refresh. */
+  overscroll-behavior-y: contain;
 }
 body {
   margin: 0;
@@ -57,6 +61,27 @@ button {
 button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+button,
+.mobile-navigation a {
+  transition:
+    transform 0.4s var(--spring),
+    background-color 0.2s,
+    color 0.2s,
+    box-shadow 0.25s;
+}
+/* Quick press in, springy release. */
+:is(button, .mobile-navigation a):active:not(:disabled) {
+  transform: scale(0.95);
+  transition-duration: 0.08s;
+}
+:is(.icon-button, .favorite-button, .reorder-controls button):active:not(:disabled) {
+  transform: scale(0.86);
+}
+:is(.daily-row, .favorite-place, .metric-card, .primary-button, .search-results button):active:not(
+    :disabled
+  ) {
+  transform: scale(0.98);
 }
 button,
 a,
@@ -605,14 +630,36 @@ h3 {
   margin-bottom: 13px;
 }
 .segmented {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   background: var(--soft);
   border-radius: 12px;
   padding: 3px;
   gap: 2px;
   min-width: 0;
 }
+/* Sliding thumb: one third of the track, moved to the pressed button. */
+.segmented::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 10px) / 3);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 1px 4px #00000012;
+  transition: transform 0.35s var(--ease);
+}
+.segmented:has(button:nth-child(2)[aria-pressed='true'])::before {
+  transform: translateX(calc(100% + 2px));
+}
+.segmented:has(button:nth-child(3)[aria-pressed='true'])::before {
+  transform: translateX(calc(200% + 4px));
+}
 .segmented button {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -624,8 +671,6 @@ h3 {
   color: var(--muted);
 }
 .segmented button[aria-pressed='true'] {
-  background: var(--surface);
-  box-shadow: 0 1px 4px #00000012;
   color: var(--accent);
 }
 .chart-unit {
@@ -765,6 +810,7 @@ h3 {
   gap: 3px;
   overflow-x: auto;
   padding: 12px 1px 7px;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
@@ -891,6 +937,11 @@ h3 {
 }
 .metric-card:hover {
   box-shadow: 0 5px 20px #1c304812;
+}
+@media (hover: hover) {
+  .metric-card:hover {
+    transform: translateY(-2px);
+  }
 }
 .metric-label {
   display: flex;
@@ -1039,23 +1090,44 @@ h3 {
 .error-banner {
   border: 1px solid #cf7878;
 }
-.loading-panel {
-  background: var(--surface);
-  text-align: center;
-  border-radius: 24px;
-  padding: 60px 20px;
+.skeleton div:empty {
+  height: 300px;
+  border-radius: 22px;
+  background: linear-gradient(100deg, var(--surface) 40%, var(--soft) 50%, var(--surface) 60%) 0 0 /
+    300% 100%;
+  animation: shimmer 1.6s linear infinite;
 }
-.loading-panel > svg {
-  color: var(--sun);
+.skeleton div.skeleton-hero {
+  height: 230px;
+  border-radius: 26px;
   margin-bottom: 14px;
 }
-.loading-panel h2 {
-  font-size: 20px;
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
 }
-.loading-panel p {
-  font-size: 13px;
-  color: var(--muted);
-  margin-top: 10px;
+.pull-indicator {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) - 44px);
+  left: calc(50% - 20px);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  z-index: 4;
+  pointer-events: none;
+  opacity: calc(var(--pull, 0) / 60);
+  transform: translateY(calc(var(--pull, 0) * 1.4px)) rotate(calc(var(--pull, 0) * 4deg));
+  transition:
+    transform 0.35s var(--ease),
+    opacity 0.35s;
+}
+::view-transition-group(*) {
+  animation-duration: 0.3s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
 .app-footer {
   font-size: 10px;
@@ -1386,6 +1458,74 @@ h3 {
     transform: rotate(360deg);
   }
 }
+/* Content remounts on each location change, so these replay as a staggered entrance. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes needle {
+  from {
+    transform: rotate(0deg);
+  }
+}
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+.weather-hero,
+.day-insight,
+.hourly-panel,
+.daily-panel,
+.metric-card,
+.warnings-section,
+.notice-banner,
+.error-banner {
+  animation: rise 0.55s var(--ease) backwards;
+}
+.day-insight {
+  animation-delay: 0.05s;
+}
+.hourly-panel {
+  animation-delay: 0.1s;
+}
+.daily-panel {
+  animation-delay: 0.15s;
+}
+.metric-card {
+  animation-delay: 0.2s;
+}
+.temperature-track > span {
+  transform-origin: left;
+  animation: grow 0.7s var(--ease) 0.3s backwards;
+}
+.compass-arrow {
+  animation: needle 0.9s var(--spring);
+}
+.chart-line:not(.rain-link) {
+  stroke-dasharray: 1;
+  animation: draw 0.8s var(--ease) backwards;
+}
+.chart-dot {
+  transition:
+    cx 0.14s var(--ease),
+    cy 0.14s var(--ease);
+}
+.detail-sheet::backdrop {
+  transition: opacity 0.3s;
+}
+@starting-style {
+  .detail-sheet[open]::backdrop {
+    opacity: 0;
+  }
+}
 @media (min-width: 1400px) {
   .main-content {
     padding: 28px 50px;
@@ -1635,7 +1775,13 @@ h3 {
     width: 34px;
     border-radius: 4px;
     background: var(--border);
-    margin: 10px auto 0;
+    /* Padding is the drag target; the pill is only the content box. */
+    box-sizing: content-box;
+    background-clip: content-box;
+    padding: 10px 40px;
+    margin: 0 auto -10px;
+    touch-action: none;
+    cursor: grab;
   }
   .sheet-header {
     padding: 15px 20px;
@@ -1723,7 +1869,8 @@ h3 {
     animation: none !important;
     transition: none !important;
   }
-  html {
+  html,
+  .hour-strip {
     scroll-behavior: auto;
   }
 }

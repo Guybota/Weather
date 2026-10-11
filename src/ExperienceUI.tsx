@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { ArrowUp, ArrowDown, ChevronRight, X } from 'lucide-react';
 import { WeatherIcon } from './components';
 import { dateInZone, value, type Location, type Period } from './weather';
@@ -22,6 +22,28 @@ export function Sheet({
   const titleId = useId();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const dragStart = useRef(0);
+  const dismiss = () => {
+    const dialog = ref.current!;
+    if (!dialog.animate || matchMedia('(prefers-reduced-motion: reduce)').matches)
+      return closeRef.current();
+    // `translate` composes with the transform left by a drag.
+    void dialog
+      .animate(
+        { translate: '0 40px', opacity: 0 },
+        { duration: 180, easing: 'ease-in', fill: 'forwards' },
+      )
+      .finished.then(() => closeRef.current());
+  };
+  const release = (e: PointerEvent) => {
+    const dialog = ref.current!;
+    if (e.type === 'pointerup' && e.clientY - dragStart.current > 90) return dismiss();
+    dialog.animate?.(
+      { transform: [dialog.style.transform || 'none', 'none'] },
+      { duration: 300, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' },
+    );
+    dialog.style.transform = '';
+  };
   useEffect(() => {
     const dialog = ref.current!;
     const overflow = document.body.style.overflow;
@@ -84,7 +106,7 @@ export function Sheet({
       aria-labelledby={titleId}
       onCancel={(e) => {
         e.preventDefault();
-        closeRef.current();
+        dismiss();
       }}
       onClick={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
@@ -92,16 +114,29 @@ export function Sheet({
           e.target === e.currentTarget &&
           (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
         )
-          onClose();
+          dismiss();
       }}
     >
-      <div className="sheet-handle" aria-hidden="true" />
+      <div
+        className="sheet-handle"
+        aria-hidden="true"
+        onPointerDown={(e) => {
+          dragStart.current = e.clientY;
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId))
+            ref.current!.style.transform = `translateY(${Math.max(0, e.clientY - dragStart.current)}px)`;
+        }}
+        onPointerUp={release}
+        onPointerCancel={release}
+      />
       <header className="sheet-header">
         <div>
           <h2 id={titleId}>{title}</h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
-        <button className="icon-button" onClick={onClose} aria-label={t('Fechar painel')}>
+        <button className="icon-button" onClick={dismiss} aria-label={t('Fechar painel')}>
           <X size={20} />
         </button>
       </header>
@@ -149,7 +184,11 @@ export function FavoritePlaces({
             (p) => p.interval === 24 && p.date === dateInZone(now, l.timezone),
           );
           return (
-            <div className="favorite-row" key={l.id}>
+            <div
+              className="favorite-row"
+              key={l.id}
+              style={{ viewTransitionName: 'place-' + l.id }}
+            >
               <button
                 className={`favorite-place ${l.id === selected ? 'active' : ''}`}
                 onClick={() => onChoose(l.id)}

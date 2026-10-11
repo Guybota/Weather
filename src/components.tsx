@@ -203,6 +203,7 @@ export function ForecastChart({
           : best,
       0,
     );
+    if (closest !== selected) navigator.vibrate?.(5);
     onSelect(closest);
   };
   return (
@@ -333,7 +334,7 @@ export function ForecastChart({
                   ))}
                 </g>
               ) : (
-                <path d={path} className="chart-line" />
+                <path key={metric} d={path} pathLength={1} className="chart-line" />
               )}
               {hasNow && (
                 <g>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
   AlertTriangle,
@@ -73,6 +74,12 @@ function save(key: string, value: unknown) {
     /* Optional storage. */
   }
 }
+// Animates list reorders where the View Transitions API exists; a plain update elsewhere.
+function reorder(update: () => void) {
+  if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    document.startViewTransition(() => flushSync(update));
+  else update();
+}
 type Bundle = {
   id: number;
   forecast: Period[];
@@ -121,6 +128,7 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [locating, setLocating] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const pullRef = useRef<HTMLDivElement>(null);
   const loadedLocation = useRef<number | null>(null);
   const {
     needRefresh: [needRefresh],
@@ -292,6 +300,41 @@ export default function App() {
   useEffect(() => {
     if (showSearch) searchRef.current?.focus();
   }, [showSearch]);
+  useEffect(() => {
+    // Pull to refresh: only from the top of the page, never while a panel is open.
+    const indicator = pullRef.current!;
+    let start = 0,
+      pull = 0;
+    const set = (distance: number) => {
+      pull = distance;
+      indicator.style.transition = distance ? 'none' : '';
+      indicator.style.setProperty('--pull', String(distance));
+    };
+    const down = (e: TouchEvent) => {
+      start = scrollY <= 0 && !document.querySelector('dialog[open]') ? e.touches[0].clientY : 0;
+    };
+    const move = (e: TouchEvent) => {
+      if (start) set(Math.max(0, Math.min(90, (e.touches[0].clientY - start) * 0.5)));
+    };
+    const up = () => {
+      if (pull >= 60 && navigator.onLine) {
+        navigator.vibrate?.(10);
+        setRefresh((r) => r + 1);
+      }
+      if (pull) set(0);
+      start = 0;
+    };
+    window.addEventListener('touchstart', down, { passive: true });
+    window.addEventListener('touchmove', move, { passive: true });
+    window.addEventListener('touchend', up);
+    window.addEventListener('touchcancel', up);
+    return () => {
+      window.removeEventListener('touchstart', down);
+      window.removeEventListener('touchmove', move);
+      window.removeEventListener('touchend', up);
+      window.removeEventListener('touchcancel', up);
+    };
+  }, []);
   const favoriteKey = [...favorites].sort().join(',');
   useEffect(() => {
     if (!locations.length) return;
@@ -465,6 +508,7 @@ export default function App() {
       : [...favorites, locationId];
     setFavorites(next);
     save('favorites', next);
+    navigator.vibrate?.(10);
   }
   function locate() {
     if (!navigator.geolocation) {
@@ -519,7 +563,7 @@ export default function App() {
       target = index + offset;
     if (index < 0 || target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
-    setFavorites(next);
+    reorder(() => setFavorites(next));
     save('favorites', next);
   }
   function moveIndicator(index: number, offset: number) {
@@ -527,7 +571,7 @@ export default function App() {
       target = index + offset;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
-    setIndicators(next);
+    reorder(() => setIndicators(next));
   }
 
   const warningBlock = current && (
@@ -652,6 +696,9 @@ export default function App() {
   );
   return (
     <div className="app-shell" data-sky={sky}>
+      <div ref={pullRef} className="pull-indicator glass-control" aria-hidden="true">
+        <RefreshCw size={18} />
+      </div>
       <a className="skip-link" href="#today">
         {systemLanguage === 'pt' ? 'Ir para a previsão' : 'Skip to forecast'}
       </a>
@@ -795,10 +842,13 @@ export default function App() {
           </button>
         </div>
         {loading && !current ? (
-          <div className="loading-panel" role="status">
-            <Sun size={35} className="spinning" />
-            <h2>{t('A carregar a previsão…')}</h2>
-            <p>{t('A obter a previsão do IPMA.')}</p>
+          <div className="skeleton" role="status">
+            <span className="sr-only">{t('A carregar a previsão…')}</span>
+            <div className="skeleton-hero" />
+            <div className="forecast-layout">
+              <div />
+              <div />
+            </div>
           </div>
         ) : current ? (
           <>
@@ -1171,7 +1221,7 @@ export default function App() {
           </div>
           <div className="indicator-order">
             {indicators.map((key, index) => (
-              <div key={key}>
+              <div key={key} style={{ viewTransitionName: 'indicator-' + key }}>
                 <span>{t(indicatorNames[key])}</span>
                 <span className="reorder-controls">
                   <button
