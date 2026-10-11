@@ -6,26 +6,36 @@ import {
   CloudSnow,
   CloudSun,
   Sun,
+  Moon,
+  CloudMoon,
   Wind,
   Droplets,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { dateInZone, formatDay, formatTime, value, type Period } from './weather';
+import { localHour } from './experience';
+import { t, language } from './i18n';
 
 export function WeatherIcon({
   code,
   size = 28,
   className = '',
+  night = false,
 }: {
   code: number;
   size?: number;
   className?: string;
+  night?: boolean;
 }) {
   const Icon =
     code === 1
-      ? Sun
+      ? night
+        ? Moon
+        : Sun
       : [2, 3, 5, 25].includes(code)
-        ? CloudSun
+        ? night
+          ? CloudMoon
+          : CloudSun
         : [16, 17, 26].includes(code)
           ? CloudFog
           : [18, 21, 22, 28, 29, 30].includes(code)
@@ -45,23 +55,44 @@ export function WeatherIcon({
   );
 }
 
-export function SkyIllustration({ code }: { code: number }) {
+export function SkyIllustration({ code, night = false }: { code: number; night?: boolean }) {
   const rain = (code >= 6 && code <= 15) || [19, 20, 23].includes(code);
+  const celestial = [1, 2, 3, 5, 25].includes(code);
   return (
     <svg viewBox="0 0 340 230" className="sky-illustration" aria-hidden="true">
       <path d="M28 164h280M66 189h212M104 214h136" className="sky-horizon" />
-      <circle cx="222" cy="73" r="39" className="sky-sun" />
-      <g className="sky-rays">
-        <path d="M222 14v-9M222 133v9M163 73h-9M281 73h9M180 31l-7-7M264 115l7 7M264 31l7-7M180 115l-7 7" />
-      </g>
-      <path
-        d="M101 152c-27 0-47-18-47-41 0-23 19-40 42-40 7 0 13 1 19 4a55 55 0 0 1 106 23c25-2 44 9 44 29 0 15-12 25-31 25Z"
-        className="sky-cloud"
-      />
+      {celestial &&
+        (night ? (
+          <path d="M239 36a39 39 0 1 0 20 66 37 37 0 0 1-20-66Z" className="sky-moon" />
+        ) : (
+          <circle cx="222" cy="73" r="39" className="sky-sun" />
+        ))}
+      {celestial && !night && !rain && (
+        <g className="sky-rays">
+          <path d="M222 14v-9M222 133v9M163 73h-9M281 73h9M180 31l-7-7M264 115l7 7M264 31l7-7M180 115l-7 7" />
+        </g>
+      )}
+      {code !== 1 && (
+        <path
+          d="M101 152c-27 0-47-18-47-41 0-23 19-40 42-40 7 0 13 1 19 4a55 55 0 0 1 106 23c25-2 44 9 44 29 0 15-12 25-31 25Z"
+          className="sky-cloud"
+        />
+      )}
       {rain && (
         <g className="sky-rain">
           <path d="m113 169-8 14m48-14-8 14m48-14-8 14m48-14-8 14" />
         </g>
+      )}
+      {[18, 21, 22, 28, 29, 30].includes(code) && (
+        <g className="sky-snow">
+          <circle cx="112" cy="179" r="4" />
+          <circle cx="151" cy="193" r="4" />
+          <circle cx="191" cy="174" r="4" />
+          <circle cx="229" cy="191" r="4" />
+        </g>
+      )}
+      {[19, 20, 23].includes(code) && (
+        <path d="m177 150-15 28h19l-11 29 34-42h-21l9-15Z" className="sky-lightning" />
       )}
       {[16, 17, 26].includes(code) && (
         <g className="sky-fog">
@@ -79,6 +110,7 @@ export function ForecastChart({
   onMetric,
   selected,
   onSelect,
+  now,
 }: {
   periods: Period[];
   timezone: string;
@@ -86,6 +118,7 @@ export function ForecastChart({
   onMetric: (metric: 'temperature' | 'rain' | 'wind') => void;
   selected: number;
   onSelect: (index: number) => void;
+  now: number;
 }) {
   const metricInfo = {
     temperature: { label: 'Temperatura', unit: '°C', icon: Sun },
@@ -93,7 +126,10 @@ export function ForecastChart({
     wind: { label: 'Vento', unit: 'km/h', icon: Wind },
   };
   const info = metricInfo[metric];
-  const description = `${info.label} ${metric === 'wind' ? 'previsto' : 'prevista'}`;
+  const description =
+    language() === 'en'
+      ? `${t(info.label)} forecast`
+      : `${info.label} ${metric === 'wind' ? 'previsto' : 'prevista'}`;
   const values = periods.map((p) => p[metric]);
   const valid = values.filter((n): n is number => n !== null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,16 +179,32 @@ export function ForecastChart({
     connected = true;
   });
   const chosen = periods[Math.min(selected, Math.max(0, periods.length - 1))];
+  const nowX = left + ((now - start) / Math.max(1, end - start)) * (width - left - right);
+  const hasNow = periods.length > 1 && now >= start && now <= end;
+  const pointAt = (clientX: number, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    const position = ((clientX - rect.left) / rect.width) * width;
+    const target =
+      start + Math.max(0, Math.min(1, (position - left) / (width - left - right))) * (end - start);
+    const closest = periods.reduce(
+      (best, p, i) =>
+        Math.abs(Date.parse(p.at) - target) < Math.abs(Date.parse(periods[best].at) - target)
+          ? i
+          : best,
+      0,
+    );
+    onSelect(closest);
+  };
   return (
     <div ref={containerRef}>
       <div className="chart-toolbar">
-        <div className="segmented" aria-label="Métrica do gráfico">
+        <div className="segmented" aria-label={t('Métrica do gráfico')}>
           {(Object.keys(metricInfo) as Array<keyof typeof metricInfo>).map((key) => {
             const Icon = metricInfo[key].icon;
             return (
               <button key={key} aria-pressed={metric === key} onClick={() => onMetric(key)}>
                 <Icon size={15} />
-                <span>{metricInfo[key].label}</span>
+                <span>{t(metricInfo[key].label)}</span>
               </button>
             );
           })}
@@ -165,16 +217,63 @@ export function ForecastChart({
             <strong>{chosen ? formatTime(chosen.at, timezone) : '—'}</strong>
             <span>{chosen ? value(chosen[metric], ` ${info.unit}`, 1) : '—'}</span>
             <span className="secondary">
-              {chosen?.interval === 3 ? 'Intervalo de 3 horas' : 'Previsão horária'}
+              {t(chosen?.interval === 3 ? 'Intervalo de 3 horas' : 'Previsão horária')}
             </span>
           </div>
-          <div>
+          <div
+            className="interactive-chart"
+            role="slider"
+            tabIndex={0}
+            aria-label={t('Hora da previsão')}
+            aria-valuemin={0}
+            aria-valuemax={periods.length - 1}
+            aria-valuenow={Math.min(selected, periods.length - 1)}
+            aria-valuetext={`${formatTime(chosen.at, timezone)}. ${t('Temperatura')} ${value(chosen.temperature, '°')}, ${t('Probabilidade de chuva')} ${value(chosen.rain, '%')}, ${t('Vento')} ${value(chosen.wind, ' km/h')}.`}
+            onKeyDown={(e) => {
+              const next =
+                e.key === 'ArrowRight' || e.key === 'ArrowUp'
+                  ? Math.min(periods.length - 1, selected + 1)
+                  : e.key === 'ArrowLeft' || e.key === 'ArrowDown'
+                    ? Math.max(0, selected - 1)
+                    : e.key === 'Home'
+                      ? 0
+                      : e.key === 'End'
+                        ? periods.length - 1
+                        : null;
+              if (next !== null) {
+                e.preventDefault();
+                onSelect(next);
+              }
+            }}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              pointAt(e.clientX, e.currentTarget);
+            }}
+            onPointerMove={(e) => {
+              if (e.currentTarget.hasPointerCapture(e.pointerId))
+                pointAt(e.clientX, e.currentTarget);
+            }}
+            onPointerUp={(e) => {
+              if (e.currentTarget.hasPointerCapture(e.pointerId))
+                e.currentTarget.releasePointerCapture(e.pointerId);
+            }}
+          >
             <svg
               className="forecast-chart"
               viewBox={`0 0 ${width} ${height}`}
               role="img"
-              aria-label={`${description} em ${info.unit}, ao longo do dia. Seleciona uma hora na lista abaixo para consultar os valores.`}
+              aria-label={`${description} (${info.unit}). ${t('Ao longo do dia')}.`}
             >
+              {hasNow && (
+                <rect
+                  x={left}
+                  y={top}
+                  width={Math.max(0, nowX - left)}
+                  height={height - top - bottom}
+                  className="chart-past"
+                />
+              )}
               {[0, 1, 2].map((i) => {
                 const n = low + ((high - low) * i) / 2;
                 return (
@@ -203,6 +302,19 @@ export function ForecastChart({
                 )
               ) : (
                 <path d={path} className="chart-line" />
+              )}
+              {hasNow && (
+                <g>
+                  <path d={`M${nowX} ${top}V${height - bottom}`} className="chart-now" />
+                  <text
+                    x={Math.min(width - right - 20, Math.max(left + 20, nowX))}
+                    y={12}
+                    textAnchor="middle"
+                    className="chart-now-label"
+                  >
+                    {t('Agora')}
+                  </text>
+                </g>
               )}
               {chosen && chosen[metric] !== null && (
                 <>
@@ -234,11 +346,29 @@ export function ForecastChart({
               })}
             </svg>
           </div>
-          <div ref={stripRef} className="hour-strip" aria-label="Selecionar hora">
+          <div className="hour-details" aria-live="polite">
+            <span>
+              {t('Temperatura')}
+              <strong>{value(chosen.temperature, '°', 1)}</strong>
+            </span>
+            <span>
+              {t('Chuva')}
+              <strong>{value(chosen.rain, '%')}</strong>
+            </span>
+            <span>
+              {t('Vento')}
+              <strong>{value(chosen.wind, ' km/h')}</strong>
+            </span>
+          </div>
+          <div ref={stripRef} className="hour-strip" aria-label={t('Selecionar hora')}>
             {periods.map((p, i) => (
               <button key={p.at} aria-pressed={selected === i} onClick={() => onSelect(i)}>
                 <span>{formatTime(p.at, timezone)}</span>
-                <WeatherIcon code={p.weather} size={23} />
+                <WeatherIcon
+                  code={p.weather}
+                  size={23}
+                  night={localHour(p.at, timezone) < 7 || localHour(p.at, timezone) >= 20}
+                />
                 <strong>{value(p.temperature, '°')}</strong>
                 <span className="hour-rain">
                   <Droplets size={11} />
@@ -248,15 +378,18 @@ export function ForecastChart({
             ))}
           </div>
           <p className="chart-caption">
-            {description} ({info.unit}) por hora local. IPMA. Pontos em falta são apresentados como
-            “—”.
+            {t(
+              'Toca ou arrasta no gráfico. As setas do teclado também mudam a hora. “—” indica um valor não fornecido pelo IPMA.',
+            )}
           </p>
         </>
       ) : (
         <div className="section-empty">
-          {periods.length
-            ? 'Este parâmetro não está disponível para o dia selecionado.'
-            : 'O IPMA disponibiliza apenas previsão diária para este dia. Consulta os valores abaixo.'}
+          {t(
+            periods.length
+              ? 'Este parâmetro não está disponível para o dia selecionado.'
+              : 'O IPMA disponibiliza apenas previsão diária para este dia. Consulta o resumo diário.',
+          )}
         </div>
       )}
     </div>
@@ -265,14 +398,12 @@ export function ForecastChart({
 
 export function DailyForecast({
   periods,
-  timezone,
   today,
   selectedDate,
   onSelect,
   descriptions,
 }: {
   periods: Period[];
-  timezone: string;
   today: string;
   selectedDate: string;
   onSelect: (date: string) => void;
@@ -289,11 +420,12 @@ export function DailyForecast({
           key={p.date}
           className="daily-row"
           aria-pressed={selectedDate === p.date}
+          aria-haspopup="dialog"
           onClick={() => onSelect(p.date)}
-          aria-label={`${p.date === today ? 'Hoje' : formatDay(p.date, { weekday: 'long', day: 'numeric', month: 'long' })}: ${descriptions.get(p.weather) ?? 'Previsão'}, mínima ${value(p.min)} graus, máxima ${value(p.max)} graus, chuva ${value(p.rain, '%')}`}
+          aria-label={`${p.date === today ? t('Hoje') : formatDay(p.date, { weekday: 'long', day: 'numeric', month: 'long' })}: ${descriptions.get(p.weather) ?? t('Previsão do dia')}, ${t('Mínima')} ${value(p.min, '°')}, ${t('Máxima')} ${value(p.max, '°')}, ${t('Chuva')} ${value(p.rain, '%')}`}
         >
           <span className="daily-day">
-            <strong>{p.date === today ? 'Hoje' : formatDay(p.date)}</strong>
+            <strong>{p.date === today ? t('Hoje') : formatDay(p.date)}</strong>
             <span>{formatDay(p.date, { day: 'numeric', month: 'short' })}</span>
           </span>
           <WeatherIcon code={p.weather} size={24} />

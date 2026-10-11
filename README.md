@@ -1,6 +1,14 @@
 # Tempo
 
-Meteorologia para Portugal com dados reais do IPMA. Interface responsiva, favoritos, gráficos de temperatura/chuva/vento, previsão diária de 10 dias, avisos por região, modo claro/escuro e instalação como PWA.
+Meteorologia para Portugal com dados reais do IPMA. Interface responsiva, favoritos com previsão e reordenação, gráficos interativos, detalhe dos 10 dias, avisos por região, indicadores personalizáveis e instalação como PWA. Português para sistemas em português; inglês para todas as outras línguas. O modo claro/escuro segue o sistema e muda automaticamente.
+
+## Interface
+
+O resumo compacto dá prioridade à previsão. Tocar num dia abre um painel com detalhe e navegação para os dias seguintes. O gráfico permite tocar/arrastar ou usar as setas, Home e End; mostra “Agora” e os valores da hora selecionada, respeitando dados em falta. Os indicadores abrem explicações, incluindo uma bússola para o vento. Favoritos e indicadores podem ser reordenados e são guardados neste dispositivo.
+
+A direção visual segue as orientações da Apple sobre [layout](https://developer.apple.com/design/human-interface-guidelines/layout) e [materiais](https://developer.apple.com/design/human-interface-guidelines/materials): tipografia do sistema, hierarquia de conteúdo, transparência nos controlos e detalhe progressivo em painéis. A app respeita redução de movimento, redução de transparência e maior contraste quando suportados pelo browser. As condições meteorológicas inglesas vêm da tabela bilingue do IPMA. O texto livre dos avisos mantém o original oficial em português, identificado como tal na interface inglesa.
+
+Na Web, a língua é fornecida por `navigator.language` e a aparência por `prefers-color-scheme`. A app responde aos eventos de alteração destas preferências; uma preferência manual de tema guardada por versões anteriores não substitui o sistema.
 
 ## Desenvolvimento
 

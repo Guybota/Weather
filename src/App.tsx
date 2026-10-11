@@ -4,12 +4,10 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Check,
-  ChevronDown,
   Download,
   Droplets,
   LocateFixed,
   MapPin,
-  Moon,
   RefreshCw,
   Search,
   Star,
@@ -20,16 +18,32 @@ import {
   Waves,
   Gauge,
   Info,
+  Settings2,
+  ChevronLeft,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  CalendarDays,
 } from 'lucide-react';
 import { loadData } from './api';
 import { DailyForecast, ForecastChart, SkyIllustration, WeatherIcon } from './components';
+import { Sheet, FavoritePlaces, Compass, type Preview } from './ExperienceUI';
+import {
+  dayInsight,
+  localHour,
+  uvLabel,
+  validIndicators,
+  indicatorNames,
+  defaultIndicators,
+  type Indicator,
+} from './experience';
+import { t, language, locale } from './i18n';
 import {
   dateInZone,
   distanceKm,
   formatDay,
   formatTime,
   nearestObservation,
-  numeric,
   parseForecast,
   parseLocations,
   parseObservations,
@@ -82,11 +96,9 @@ export default function App() {
     return Array.isArray(saved) ? saved.filter((id): id is number => typeof id === 'number') : [];
   });
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    stored('theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') ===
-    'dark'
-      ? 'dark'
-      : 'light',
+    matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   );
+  const [systemLanguage, setSystemLanguage] = useState(language);
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -100,10 +112,15 @@ export default function App() {
   const [selectedHour, setSelectedHour] = useState(0);
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
   const [installHelp, setInstallHelp] = useState(false);
+  const [sheet, setSheet] = useState<'day' | 'places' | 'settings' | Indicator | null>(null);
+  const [previews, setPreviews] = useState<Record<number, Preview>>({});
+  const [indicators, setIndicators] = useState<Indicator[]>(() =>
+    validIndicators(stored('indicators', defaultIndicators)),
+  );
   const [online, setOnline] = useState(navigator.onLine);
   const [locating, setLocating] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const loadedLocation = useRef<number | null>(null);
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -111,8 +128,23 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    save('theme', theme);
   }, [theme]);
+  useEffect(() => {
+    const preference = matchMedia('(prefers-color-scheme: dark)');
+    const change = () => setTheme(preference.matches ? 'dark' : 'light');
+    const changeLanguage = () => setSystemLanguage(language());
+    preference.addEventListener('change', change);
+    window.addEventListener('languagechange', changeLanguage);
+    return () => {
+      preference.removeEventListener('change', change);
+      window.removeEventListener('languagechange', changeLanguage);
+    };
+  }, []);
+  useEffect(() => {
+    document.documentElement.lang = systemLanguage;
+    document.title =
+      systemLanguage === 'pt' ? 'Tempo — Meteorologia em Portugal' : 'Tempo — Weather in Portugal';
+  }, [systemLanguage]);
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 60000);
     const online = () => {
@@ -176,8 +208,11 @@ export default function App() {
     setLoading(true);
     setError('');
     save('location', location.id);
-    setDay('');
-    setSelectedHour(0);
+    const changingLocation = loadedLocation.current !== location.id;
+    if (changingLocation) {
+      setDay('');
+      setSelectedHour(0);
+    }
     Promise.allSettled(
       ['forecast/' + location.id, 'warnings', 'observations'].map((path) =>
         loadData(path, controller.signal),
@@ -201,7 +236,8 @@ export default function App() {
               : best,
           0,
         );
-        setSelectedHour(closest);
+        if (changingLocation) setSelectedHour(closest);
+        loadedLocation.current = location.id;
         let warnings: Warning[] = [],
           observations: Observation[] = [],
           warningsUnknown = true,
@@ -255,10 +291,30 @@ export default function App() {
   useEffect(() => {
     if (showSearch) searchRef.current?.focus();
   }, [showSearch]);
+  const favoriteKey = [...favorites].sort().join(',');
   useEffect(() => {
-    if (installHelp) dialogRef.current?.showModal();
-    else dialogRef.current?.close();
-  }, [installHelp]);
+    if (!locations.length) return;
+    const controller = new AbortController();
+    const pending = favorites.filter((id) => locations.some((l) => l.id === id));
+    // Two concurrent requests keep a long list of saved places gentle on the IPMA proxy.
+    const work = async () => {
+      while (pending.length && !controller.signal.aborted) {
+        const id = pending.shift()!;
+        try {
+          const result = await loadData('forecast/' + id, controller.signal);
+          const preview = { forecast: parseForecast(result.data), stale: result.stale };
+          if (!controller.signal.aborted) setPreviews((current) => ({ ...current, [id]: preview }));
+        } catch {
+          /* Each place can remain unavailable independently. */
+        }
+      }
+    };
+    void Promise.all([work(), work()]);
+    return () => controller.abort();
+  }, [favoriteKey, locations.length, refresh]);
+  useEffect(() => {
+    save('indicators', indicators);
+  }, [indicators]);
   useEffect(() => {
     if (!notice) return;
     const timeout = setTimeout(() => setNotice(''), 8000);
@@ -266,7 +322,18 @@ export default function App() {
   }, [notice]);
 
   const current = bundle?.id === locationId ? bundle : null;
-  const descriptions = useMemo(() => new Map(types.map((t) => [t.id, t.description])), [types]);
+  const descriptions = useMemo(
+    () =>
+      new Map(
+        types.map((type) => [
+          type.id,
+          systemLanguage === 'pt'
+            ? type.description
+            : (type.englishDescription ?? 'Weather forecast'),
+        ]),
+      ),
+    [types, systemLanguage],
+  );
   const daily = current?.forecast.filter((p) => p.interval === 24 && p.date >= today) ?? [];
   const selectedDate = daily.some((p) => p.date === day)
     ? day
@@ -307,12 +374,89 @@ export default function App() {
   const installed =
     matchMedia('(display-mode: standalone)').matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone;
+  const night = localHour(now, timezone) < 7 || localHour(now, timezone) >= 20;
+  const skyCode = nearestForecast?.weather ?? todayForecast?.weather ?? 0;
+  const sky = night
+    ? 'night'
+    : skyCode >= 6 && skyCode <= 23
+      ? 'rain'
+      : skyCode === 1
+        ? 'sun'
+        : 'cloud';
+  const insight = dayInsight(hourly, todayForecast, timezone, now);
+  const previewValues = current
+    ? { ...previews, [locationId]: { forecast: current.forecast, stale: hasStale } }
+    : previews;
+  const humidityObserved = observation?.humidity != null;
+  const indicatorData = {
+    wind: {
+      icon: Wind,
+      label: 'Vento previsto',
+      reading: value(nearestForecast?.wind, ' km/h'),
+      note: nearestForecast?.direction
+        ? 'Vem de ' + nearestForecast.direction
+        : 'Direção indisponível',
+      text: 'Velocidade e direção previstas para a localidade. A direção indica de onde vem o vento. Não representa rajadas.',
+      source: nearestForecast
+        ? 'Previsão para as ' + formatTime(nearestForecast.at, timezone)
+        : 'Sem previsão recente disponível.',
+    },
+    rain: {
+      icon: Droplets,
+      label: 'Probabilidade de chuva',
+      reading: value(todayForecast?.rain, '%'),
+      note: 'Para hoje',
+      text: 'A percentagem indica a probabilidade de precipitação durante o período previsto. Não é a quantidade de chuva nem a percentagem do dia em que vai chover. Os valores de cada período e do dia completo podem diferir.',
+      source:
+        'Previsão diária do IPMA. No gráfico, cada valor corresponde ao período disponibilizado.',
+    },
+    uv: {
+      icon: Sun,
+      label: 'Índice UV previsto',
+      reading: value(todayForecast?.uv, '', 1),
+      note: uvLabel(todayForecast?.uv),
+      text: 'O índice UV descreve a intensidade da radiação ultravioleta prevista. A escala vai de baixo (0–2) a extremo (11 ou mais). Este é o valor diário disponibilizado pelo IPMA; não é uma medição em tempo real.',
+      source: 'Previsão diária para hoje.',
+    },
+    humidity: {
+      icon: Droplets,
+      label: 'Humidade ' + (humidityObserved ? 'observada' : 'prevista'),
+      reading: value(observation?.humidity ?? nearestForecast?.humidity, '%'),
+      note: humidityObserved ? 'Às ' + formatTime(observation!.at, timezone) : 'Para a localidade',
+      text: 'A humidade relativa compara o vapor de água presente no ar com o máximo possível à mesma temperatura. Um valor de 100% não implica, por si só, que esteja a chover.',
+      source: humidityObserved
+        ? observation!.name +
+          ', às ' +
+          formatTime(observation!.at, timezone) +
+          (current?.observationsStale ? ' · dados guardados' : '')
+        : nearestForecast
+          ? 'Previsão para as ' + formatTime(nearestForecast.at, timezone)
+          : 'Sem informação recente disponível.',
+    },
+    pressure: {
+      icon: Gauge,
+      label: 'Pressão observada',
+      reading: value(observation?.pressure, ' hPa'),
+      note:
+        observation?.pressure != null
+          ? 'Às ' + formatTime(observation.at, timezone)
+          : 'Sem observação recente',
+      text: 'Pressão atmosférica registada pela estação meteorológica próxima. O valor é apresentado em hectopascais (hPa), sem inferir uma tendência a partir de uma única observação.',
+      source:
+        observation?.pressure != null
+          ? observation.name + (current?.observationsStale ? ' · dados guardados' : '')
+          : 'Não há uma observação adequada disponível.',
+    },
+  };
+  const indicatorDetail =
+    sheet && Object.hasOwn(indicatorNames, sheet) ? indicatorData[sheet as Indicator] : null;
 
   function choose(id: number) {
     setLocationId(id);
     setShowSearch(false);
     setSearch('');
     setNotice('');
+    setSheet(null);
   }
   function toggleFavorite() {
     const next = isFavorite
@@ -355,143 +499,224 @@ export default function App() {
   }
   const selectDate = (date: string) => {
     setDay(date);
-    setSelectedHour(0);
+    const periods = hourly.filter((p) => dateInZone(p.at, timezone) === date);
+    setSelectedHour(
+      date === today && periods.length
+        ? periods.reduce(
+            (best, p, i) =>
+              Math.abs(Date.parse(p.at) - now) < Math.abs(Date.parse(periods[best].at) - now)
+                ? i
+                : best,
+            0,
+          )
+        : 0,
+    );
   };
+  function moveFavorite(id: number, offset: number) {
+    const next = [...favorites],
+      index = next.indexOf(id),
+      target = index + offset;
+    if (index < 0 || target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setFavorites(next);
+    save('favorites', next);
+  }
+  function moveIndicator(index: number, offset: number) {
+    const next = [...indicators],
+      target = index + offset;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setIndicators(next);
+  }
 
+  const warningBlock = current && (
+    <section
+      className={
+        'warnings-section ' +
+        (warnings.length || current.warningsUnknown || current.warningsStale
+          ? 'has-warnings'
+          : 'all-clear')
+      }
+      aria-label={t('Avisos meteorológicos')}
+    >
+      <div className="warnings-header">
+        {current.warningsUnknown || current.warningsStale || warnings.length ? (
+          <AlertTriangle size={19} />
+        ) : (
+          <Check size={16} />
+        )}
+        <div>
+          <h2>
+            {t(
+              current.warningsUnknown
+                ? 'Avisos indisponíveis'
+                : current.warningsStale
+                  ? 'Avisos guardados — confirmar atualização'
+                  : warnings.length
+                    ? warnings.length +
+                      ' aviso' +
+                      (warnings.length > 1 ? 's' : '') +
+                      ' para a região'
+                    : 'Sem avisos em vigor ou previstos',
+            )}
+          </h2>
+          {(warnings.length > 0 || current.warningsUnknown || current.warningsStale) && (
+            <p>
+              {t(
+                current.warningsUnknown || current.warningsStale
+                  ? 'Não foi possível confirmar os avisos atuais. Consulta o IPMA.'
+                  : 'Avisos oficiais para a região da localidade selecionada.',
+              )}
+            </p>
+          )}
+        </div>
+        <a
+          href="https://www.ipma.pt/pt/otempo/prev-sam/"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={t('Consultar avisos no IPMA')}
+        >
+          <ArrowUpRight size={19} />
+        </a>
+      </div>
+      {warnings.map((w) => (
+        <article className={'warning-item warning-' + w.level} key={w.type + w.start + w.end}>
+          <div>
+            <span className="warning-level">
+              {t(w.level === 'red' ? 'Vermelho' : w.level === 'orange' ? 'Laranja' : 'Amarelo')}
+            </span>
+            <strong>{t(w.type)}</strong>
+          </div>
+          <p className="warning-when">
+            {t(Date.parse(w.start) > now ? 'Previsto' : 'Em vigor')} ·{' '}
+            {new Intl.DateTimeFormat(locale(), {
+              day: 'numeric',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZone: timezone,
+            }).format(new Date(w.start))}{' '}
+            {t('até')}{' '}
+            {new Intl.DateTimeFormat(locale(), {
+              day: 'numeric',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZone: timezone,
+            }).format(new Date(w.end))}
+          </p>
+          <p lang="pt">{w.text}</p>
+          {systemLanguage === 'en' && <small>{t('Texto oficial do IPMA em português.')}</small>}
+        </article>
+      ))}
+    </section>
+  );
+  const favoriteList = (
+    <FavoritePlaces
+      favorites={favorites}
+      locations={locations}
+      previews={previewValues}
+      selected={locationId}
+      now={now}
+      onChoose={choose}
+      onMove={moveFavorite}
+    />
+  );
+  const searchPanel = (
+    <div className="search-panel">
+      <label className="search-field">
+        <Search size={18} />
+        <span className="sr-only">{t('Pesquisar localidade')}</span>
+        <input
+          ref={searchRef}
+          type="search"
+          placeholder={t('Lisboa, Porto, Funchal…')}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowSearch(false);
+          }}
+        />
+      </label>
+      <div className="search-results">
+        {shownLocations.slice(0, 30).map((l) => (
+          <button key={l.id} onClick={() => choose(l.id)}>
+            <span>{l.name}</span>
+            {l.id === locationId ? <Check size={17} /> : <ChevronRight size={16} />}
+          </button>
+        ))}
+        {!shownLocations.length && <p>{t('Nenhuma localidade encontrada.')}</p>}
+      </div>
+    </div>
+  );
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-sky={sky}>
+      <a className="skip-link" href="#today">
+        {systemLanguage === 'pt' ? 'Ir para a previsão' : 'Skip to forecast'}
+      </a>
       <aside className="sidebar">
-        <a href="#today" className="brand" aria-label="Tempo, início">
+        <a href="#today" className="brand" aria-label={t('Tempo, início')}>
           <span className="brand-mark">
-            <Sun size={24} />
-            <Waves size={24} />
+            <Sun size={25} />
+            <Waves size={22} />
           </span>
           <span>
-            tempo<span className="brand-country">Portugal</span>
+            tempo<small>Portugal</small>
           </span>
         </a>
-        <div className="sidebar-intro">
-          <h2>
-            O teu tempo,
-            <br />
-            mais perto.
-          </h2>
-          <p>
-            Do primeiro raio de sol
-            <br />à próxima mudança de planos.
-          </p>
-        </div>
         <button
-          className="search-trigger"
-          onClick={() => setShowSearch((s) => !s)}
+          className="search-trigger glass-control"
+          aria-label={t('Pesquisar localidade')}
+          onClick={() => setShowSearch(!showSearch)}
           aria-expanded={showSearch}
         >
           <Search size={18} />
-          <span>Pesquisar localidade</span>
-          <ChevronDown size={14} />
+          <span>{t('Pesquisar localidade')}</span>
         </button>
-        {showSearch && (
-          <div className="search-panel">
-            <label className="sr-only" htmlFor="place-search">
-              Pesquisar localidade
-            </label>
-            <input
-              id="place-search"
-              ref={searchRef}
-              type="search"
-              placeholder="Lisboa, Porto, Funchal…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setShowSearch(false);
-              }}
-            />
-            <div className="search-results">
-              {shownLocations.slice(0, 30).map((l) => (
-                <button key={l.id} onClick={() => choose(l.id)}>
-                  <span>{l.name}</span>
-                  {l.id === locationId && <Check size={15} />}
-                </button>
-              ))}
-              {!shownLocations.length && <p>Nenhuma localidade encontrada.</p>}
-            </div>
-          </div>
-        )}
         <button className="locate-button" onClick={locate} disabled={!locations.length || locating}>
-          <LocateFixed size={16} />
-          {locating ? 'A localizar…' : 'Usar a minha localização'}
+          <LocateFixed size={17} />
+          {t(locating ? 'A localizar…' : 'Usar a minha localização')}
         </button>
-        <div className="favorites-heading">
-          <h3>Os teus locais</h3>
-          <span>{favorites.length}</span>
-        </div>
-        <nav className="favorites" aria-label="Localidades favoritas">
-          {favorites
-            .map((id) => locations.find((l) => l.id === id))
-            .filter((l): l is Location => !!l)
-            .map((l) => (
-              <button
-                key={l.id}
-                className={l.id === locationId ? 'active' : ''}
-                onClick={() => choose(l.id)}
-                aria-pressed={l.id === locationId}
-              >
-                <MapPin size={17} />
-                <span>{l.name}</span>
-                {l.id === locationId && <span className="location-dot" />}
-              </button>
-            ))}
-          {!favorites.length && <p className="secondary">Usa a estrela para guardar um local.</p>}
-        </nav>
+        <div className="desktop-favorites">{favoriteList}</div>
         <div className="sidebar-bottom">
-          <div className="source-label">
-            <span className="source-dot" />
-            <span>Dados oficiais do IPMA</span>
-          </div>
-          <p>
-            Uma perspetiva mais clara
-            <br />
-            sobre o tempo em Portugal.
-          </p>
+          <span className="source-dot" />
+          {t('Dados oficiais do IPMA')}
           <a href="https://www.ipma.pt" target="_blank" rel="noreferrer">
-            Visitar o IPMA <ArrowUpRight size={14} />
+            {t('Visitar o IPMA')}
+            <ArrowUpRight size={15} />
           </a>
         </div>
       </aside>
-
       <main className="main-content" id="today">
         <header className="topbar">
-          <div>
-            <span className="today-date">
-              {new Intl.DateTimeFormat('pt-PT', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-                timeZone: timezone,
-              }).format(now)}
-            </span>
-            <span className="topbar-caption">Um olhar sobre o dia</span>
-          </div>
-          <div className="topbar-actions">
-            <button
-              className="icon-button"
-              onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-              aria-label={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
-            >
-              {theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}
-            </button>
+          <span className="today-date">
+            {new Intl.DateTimeFormat(locale(), {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              timeZone: timezone,
+            }).format(now)}
+          </span>
+          <div className="topbar-actions glass-control">
             <button
               className="icon-button"
               onClick={() => setRefresh((r) => r + 1)}
               disabled={loading || !online}
-              aria-label="Atualizar dados"
+              aria-label={t('Atualizar dados')}
             >
-              <RefreshCw size={18} className={loading ? 'spinning' : ''} />
+              <RefreshCw size={19} className={loading ? 'spinning' : ''} />
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => setSheet('settings')}
+              aria-label={t('Personalizar')}
+            >
+              <Settings2 size={20} />
             </button>
             {!installed && (
-              <button className="install-button" onClick={install} aria-label="Instalar app">
-                <Download size={16} />
-                <span>Instalar app</span>
+              <button className="install-button" onClick={install} aria-label={t('Instalar app')}>
+                <Download size={18} />
+                <span>{t('Instalar app')}</span>
               </button>
             )}
           </div>
@@ -499,64 +724,70 @@ export default function App() {
         {needRefresh && (
           <div className="notice-banner">
             <Info size={18} />
-            <span>Está disponível uma nova versão.</span>
-            <button onClick={() => updateServiceWorker(true)}>Atualizar app</button>
+            <span>{t('Está disponível uma nova versão.')}</span>
+            <button onClick={() => updateServiceWorker(true)}>{t('Atualizar app')}</button>
           </div>
         )}
         {!online && (
           <div className="notice-banner">
             <WifiOff size={18} />
-            <span>Sem ligação. Os dados guardados podem estar desatualizados.</span>
+            <span>{t('Sem ligação. Os dados guardados podem estar desatualizados.')}</span>
           </div>
         )}
         {notice && (
           <div className="notice-banner" role="status">
             <Info size={18} />
-            <span>{notice}</span>
+            <span>{t(notice)}</span>
             <button
               className="icon-button"
-              aria-label="Fechar mensagem"
+              aria-label={t('Fechar mensagem')}
               onClick={() => setNotice('')}
             >
-              <X size={15} />
+              <X size={16} />
             </button>
           </div>
         )}
         {error && (
           <div className="error-banner" role="alert">
             <AlertTriangle size={18} />
-            <span>{error}</span>
-            <button onClick={() => setRefresh((r) => r + 1)}>Tentar novamente</button>
+            <span>{t(error)}</span>
+            <button onClick={() => setRefresh((r) => r + 1)}>{t('Tentar novamente')}</button>
           </div>
         )}
         {hasStale && (
           <div className="notice-banner">
             <AlertTriangle size={18} />
             <span>
-              Estás a consultar a última previsão disponível.{' '}
-              {updated
-                ? `Atualizada em ${new Intl.DateTimeFormat('pt-PT', { dateStyle: 'short', timeStyle: 'short', timeZone: timezone }).format(new Date(updated))}.`
-                : ''}
+              {systemLanguage === 'pt'
+                ? 'Última previsão disponível. '
+                : 'Last available forecast. '}
+              {updated &&
+                new Intl.DateTimeFormat(locale(), {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                  timeZone: timezone,
+                }).format(new Date(updated))}
             </span>
           </div>
         )}
         <div className="location-heading">
           <div>
             <span className="location-region">
-              <MapPin size={14} />
-              {location?.region === 3
-                ? 'Açores'
-                : location?.region === 2
-                  ? 'Madeira'
-                  : 'Portugal continental'}
+              {t(
+                location?.region === 3
+                  ? 'Açores'
+                  : location?.region === 2
+                    ? 'Madeira'
+                    : 'Portugal continental',
+              )}
             </span>
-            <h1>{location?.name ?? 'O tempo em Portugal'}</h1>
+            <h1>{location?.name ?? t('O tempo em Portugal')}</h1>
           </div>
           <button
-            className={`favorite-button ${isFavorite ? 'saved' : ''}`}
+            className={'favorite-button ' + (isFavorite ? 'saved' : '')}
             onClick={toggleFavorite}
             disabled={!location}
-            aria-label={isFavorite ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
+            aria-label={t(isFavorite ? 'Remover dos favoritos' : 'Guardar nos favoritos')}
             aria-pressed={isFavorite}
           >
             <Star size={21} fill={isFavorite ? 'currentColor' : 'none'} />
@@ -564,215 +795,89 @@ export default function App() {
         </div>
         {loading && !current ? (
           <div className="loading-panel" role="status">
-            <Sun size={42} className="spinning" />
-            <h2>A abrir uma janela para o tempo…</h2>
-            <p>A obter a previsão do IPMA.</p>
+            <Sun size={35} className="spinning" />
+            <h2>{t('A carregar a previsão…')}</h2>
+            <p>{t('A obter a previsão do IPMA.')}</p>
           </div>
         ) : current ? (
           <>
-            <section className="weather-hero" aria-label="Resumo do tempo">
+            {(warnings.length > 0 || current.warningsStale || current.warningsUnknown) &&
+              warningBlock}
+            <section className="weather-hero" aria-label={t('Resumo do tempo')}>
               <div className="hero-reading">
                 <span className="reading-label">
-                  {observation ? 'Temperatura observada' : 'Temperatura prevista'}
+                  {t(observation ? 'Temperatura observada' : 'Temperatura prevista')}
                 </span>
                 <div className="hero-temperature">
                   {value(currentTemperature)}
                   <span>°</span>
                 </div>
-                <h2>
-                  {descriptions.get(todayForecast?.weather ?? nearestForecast?.weather ?? 0) ??
-                    'Previsão do dia'}
-                </h2>
+                <h2>{descriptions.get(skyCode) ?? t('Previsão do dia')}</h2>
+                <p className="condition-source">
+                  {t('Condição prevista')}
+                  {nearestForecast
+                    ? ' · ' + formatTime(nearestForecast.at, timezone)
+                    : ' · ' + t('Previsão diária')}
+                </p>
                 <div className="hero-range">
                   <span>
-                    Máx. <strong>{value(todayForecast?.max, '°')}</strong>
+                    {t('Máx.')} <strong>{value(todayForecast?.max, '°')}</strong>
                   </span>
                   <span>
-                    Mín. <strong>{value(todayForecast?.min, '°')}</strong>
+                    {t('Mín.')} <strong>{value(todayForecast?.min, '°')}</strong>
                   </span>
+                  <button onClick={() => setSheet('rain')} aria-label={t('Probabilidade de chuva')}>
+                    <Droplets size={14} />
+                    {value(todayForecast?.rain, '%')}
+                  </button>
                 </div>
-                <p className="observation-source">
-                  {observation
-                    ? `${observation.name}, a ${value(observation.distance, ' km')} · ${formatTime(observation.at, timezone)}${current.observationsStale ? ' · dados guardados' : ''}`
-                    : nearestForecast
-                      ? `Previsão para as ${formatTime(nearestForecast.at, timezone)}. Sem observação recente próxima.`
-                      : 'Sem temperatura recente disponível.'}
-                </p>
               </div>
               <div className="hero-art">
-                <SkyIllustration code={todayForecast?.weather ?? 0} />
-                <p>
-                  {todayForecast?.rain !== null && todayForecast?.rain !== undefined
-                    ? `${value(todayForecast.rain, '%')} de probabilidade de chuva hoje`
-                    : 'Previsão diária do IPMA'}
-                </p>
+                <SkyIllustration code={skyCode} night={night} />
               </div>
+              <p className="observation-source">
+                {t(
+                  observation
+                    ? observation.name +
+                        ', a ' +
+                        value(observation.distance, ' km') +
+                        ' · ' +
+                        formatTime(observation.at, timezone) +
+                        (current.observationsStale ? ' · dados guardados' : '')
+                    : nearestForecast
+                      ? 'Previsão para as ' +
+                        formatTime(nearestForecast.at, timezone) +
+                        '. Sem observação recente próxima.'
+                      : 'Sem temperatura recente disponível.',
+                )}
+              </p>
             </section>
-            <section className="metrics" aria-label="Indicadores de hoje">
-              <div>
-                <span>
-                  <Wind size={17} />
-                  Vento previsto
-                </span>
-                <strong>
-                  {value(nearestForecast?.wind)}
-                  <small> km/h</small>
-                </strong>
-                <p>
-                  {nearestForecast?.direction || 'Sem informação'}
-                  {nearestForecast ? ` · ${formatTime(nearestForecast.at, timezone)}` : ''}
-                </p>
-              </div>
-              <div>
-                <span>
-                  <Droplets size={17} />
-                  Humidade{' '}
-                  {observation?.humidity !== null && observation?.humidity !== undefined
-                    ? 'observada'
-                    : 'prevista'}
-                </span>
-                <strong>
-                  {value(observation?.humidity ?? nearestForecast?.humidity)}
-                  <small> %</small>
-                </strong>
-                <p>
-                  {observation?.humidity !== null && observation?.humidity !== undefined
-                    ? `Às ${formatTime(observation.at, timezone)}`
-                    : 'Para a localidade'}
-                </p>
-              </div>
-              <div>
-                <span>
-                  <Sun size={17} />
-                  Índice UV previsto
-                </span>
-                <strong>{value(todayForecast?.uv, '', 1)}</strong>
-                <p>
-                  {todayForecast?.uv === null || todayForecast?.uv === undefined
-                    ? 'Sem informação'
-                    : todayForecast.uv >= 11
-                      ? 'Extremo'
-                      : todayForecast.uv >= 8
-                        ? 'Muito elevado'
-                        : todayForecast.uv >= 6
-                          ? 'Elevado'
-                          : todayForecast.uv >= 3
-                            ? 'Moderado'
-                            : 'Baixo'}
-                </p>
-              </div>
-              <div>
-                <span>
-                  <Gauge size={17} />
-                  Pressão observada
-                </span>
-                <strong>
-                  {value(observation?.pressure)}
-                  <small> hPa</small>
-                </strong>
-                <p>
-                  {observation?.pressure !== null && observation?.pressure !== undefined
-                    ? `Às ${formatTime(observation.at, timezone)}`
-                    : 'Sem observação disponível'}
-                </p>
-              </div>
-            </section>
-            <section
-              className={`warnings-section ${warnings.length ? 'has-warnings' : ''}`}
-              aria-label="Avisos meteorológicos"
-            >
-              <div className="warnings-header">
-                <span className="warning-status-icon">
-                  {current.warningsUnknown || current.warningsStale || warnings.length ? (
-                    <AlertTriangle size={18} />
-                  ) : (
-                    <Check size={18} />
-                  )}
-                </span>
-                <div>
-                  <h2>
-                    {current.warningsUnknown
-                      ? 'Avisos indisponíveis'
-                      : current.warningsStale
-                        ? 'Avisos guardados — confirmar atualização'
-                        : warnings.length
-                          ? `${warnings.length} aviso${warnings.length === 1 ? '' : 's'} para a região`
-                          : 'Sem avisos em vigor ou previstos'}
-                  </h2>
-                  <p>
-                    {current.warningsUnknown || current.warningsStale
-                      ? 'Não foi possível confirmar os avisos atuais. Consulta o IPMA.'
-                      : 'Avisos oficiais para a região da localidade selecionada.'}
-                  </p>
-                </div>
-                <a
-                  href="https://www.ipma.pt/pt/otempo/prev-sam/"
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="Consultar avisos no IPMA"
-                >
-                  <ArrowUpRight size={19} />
-                </a>
-              </div>
-              {warnings.map((w) => (
-                <article
-                  className={`warning-item warning-${w.level}`}
-                  key={`${w.type}-${w.start}-${w.end}`}
-                >
-                  <div>
-                    <span className="warning-level">
-                      {w.level === 'red'
-                        ? 'Vermelho'
-                        : w.level === 'orange'
-                          ? 'Laranja'
-                          : 'Amarelo'}
-                    </span>
-                    <strong>{w.type}</strong>
-                    <span className="warning-when">
-                      {Date.parse(w.start) > now ? 'Previsto' : 'Em vigor'} ·{' '}
-                      {new Intl.DateTimeFormat('pt-PT', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        timeZone: timezone,
-                      }).format(new Date(w.start))}{' '}
-                      até{' '}
-                      {new Intl.DateTimeFormat('pt-PT', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        timeZone: timezone,
-                      }).format(new Date(w.end))}
-                    </span>
-                  </div>
-                  <p>{w.text}</p>
-                </article>
-              ))}
-            </section>
+            <div className="day-insight">
+              <Info size={17} />
+              <p>{t(insight)}</p>
+            </div>
             <div className="forecast-layout">
               <section className="hourly-panel" id="forecast">
                 <div className="section-heading">
                   <div>
-                    <h2>O dia, hora a hora</h2>
+                    <h2>{t('Ao longo do dia')}</h2>
                     <p>
                       {selectedDate === today
-                        ? 'Hoje'
+                        ? t('Hoje')
                         : formatDay(selectedDate, {
                             weekday: 'long',
                             day: 'numeric',
-                            month: 'long',
+                            month: 'short',
                           })}
                     </p>
                   </div>
                   <label className="day-select">
-                    <span className="sr-only">Dia do gráfico</span>
+                    <span className="sr-only">{t('Dia do gráfico')}</span>
                     <select value={selectedDate} onChange={(e) => selectDate(e.target.value)}>
                       {daily.map((p) => (
                         <option key={p.date} value={p.date}>
                           {p.date === today
-                            ? 'Hoje'
+                            ? t('Hoje')
                             : formatDay(p.date, {
                                 weekday: 'short',
                                 day: 'numeric',
@@ -790,102 +895,328 @@ export default function App() {
                   onMetric={setMetric}
                   selected={selectedHour}
                   onSelect={setSelectedHour}
+                  now={now}
                 />
-                {selectedDay && (
+                {selectedDay && !hoursForDay.length && (
                   <div className="selected-day-summary">
                     <span>
-                      Mínima <strong>{value(selectedDay.min, '°')}</strong>
+                      {t('Mínima')}
+                      <strong>{value(selectedDay.min, '°')}</strong>
                     </span>
                     <span>
-                      Máxima <strong>{value(selectedDay.max, '°')}</strong>
+                      {t('Máxima')}
+                      <strong>{value(selectedDay.max, '°')}</strong>
                     </span>
                     <span>
-                      Chuva <strong>{value(selectedDay.rain, '%')}</strong>
+                      {t('Chuva')}
+                      <strong>{value(selectedDay.rain, '%')}</strong>
                     </span>
                   </div>
                 )}
               </section>
-              <section className="daily-panel">
+              <section className="daily-panel" id="days">
                 <div className="section-heading">
                   <div>
-                    <h2>Próximos {daily.length} dias</h2>
-                    <p>Uma perspetiva para os teus planos</p>
+                    <h2>
+                      <CalendarDays size={17} />
+                      {t('Próximos ' + daily.length + ' dias')}
+                    </h2>
+                    <p>{t('Consulta o detalhe ao tocar num dia.')}</p>
                   </div>
                 </div>
                 <DailyForecast
                   periods={daily}
-                  timezone={timezone}
                   today={today}
                   selectedDate={selectedDate}
-                  onSelect={selectDate}
+                  onSelect={(date) => {
+                    selectDate(date);
+                    setSheet('day');
+                  }}
                   descriptions={descriptions}
                 />
                 <p className="daily-caption">
-                  Temperaturas mínima e máxima (°C). Chuva: probabilidade diária (%).
+                  {t('Temperaturas mínima e máxima (°C). Chuva: probabilidade diária (%).')}
                 </p>
               </section>
             </div>
+            <section className="metrics" aria-label={t('Indicadores de hoje')}>
+              {indicators.map((key) => {
+                const data = indicatorData[key],
+                  Icon = data.icon;
+                return (
+                  <button
+                    key={key}
+                    className="metric-card"
+                    onClick={() => setSheet(key)}
+                    aria-haspopup="dialog"
+                  >
+                    <span className="metric-label">
+                      <Icon size={17} />
+                      {t(data.label)}
+                      <ChevronRight size={14} />
+                    </span>
+                    <strong>{data.reading}</strong>
+                    <span className="metric-note">{t(data.note)}</span>
+                  </button>
+                );
+              })}
+            </section>
+            {!warnings.length && !current.warningsStale && !current.warningsUnknown && warningBlock}
             <footer className="app-footer">
               <div>
-                <span className="source-dot" />
-                Fonte:{' '}
                 <a
                   className="ipma-source"
                   href="https://www.ipma.pt"
                   target="_blank"
                   rel="noreferrer"
+                  aria-label={t('Visitar o IPMA')}
                 >
                   <img src="/ipma.svg" alt="IPMA, I.P." width="95" height="22" />
                 </a>
-                {updated && <span>Previsão atualizada às {formatTime(updated, timezone)}</span>}
+                {updated && (
+                  <span>{t('Previsão atualizada às ' + formatTime(updated, timezone))}</span>
+                )}
               </div>
-              <span>
-                Horas locais{' '}
-                {timezone === 'Atlantic/Azores'
-                  ? 'dos Açores'
-                  : 'de Portugal continental e Madeira'}
-                .
-              </span>
               <p>
-                Aplicação independente. Previsões sujeitas a alteração. Detalhe horário e
-                disponibilidade dos parâmetros variam com o horizonte.
+                {t(
+                  timezone === 'Atlantic/Azores'
+                    ? 'Horas locais dos Açores.'
+                    : 'Horas locais de Portugal continental e Madeira.',
+                )}
+              </p>
+              <p>
+                {t('Aplicação independente. Previsões sujeitas a alteração.')}{' '}
+                {t('Detalhe horário e disponibilidade dos parâmetros variam com o horizonte.')}
               </p>
             </footer>
           </>
-        ) : !loading && !error ? (
-          <p>Pesquisa uma localidade para consultar a previsão.</p>
         ) : null}
       </main>
-      <dialog
-        ref={dialogRef}
-        onCancel={() => setInstallHelp(false)}
-        onClose={() => setInstallHelp(false)}
-        className="install-dialog"
+      <nav
+        className="mobile-navigation glass-control"
+        aria-label={systemLanguage === 'pt' ? 'Navegação principal' : 'Main navigation'}
       >
-        <button
-          className="icon-button dialog-close"
-          onClick={() => setInstallHelp(false)}
-          aria-label="Fechar instruções"
+        <a href="#today">
+          <Sun size={20} />
+          {t('Hoje')}
+        </a>
+        <a href="#days">
+          <CalendarDays size={20} />
+          {t('10 dias')}
+        </a>
+        <button onClick={() => setSheet('places')}>
+          <MapPin size={20} />
+          {t('Locais')}
+        </button>
+      </nav>
+      {showSearch && (
+        <Sheet title={t('Pesquisar localidade')} onClose={() => setShowSearch(false)}>
+          {searchPanel}
+        </Sheet>
+      )}
+      {sheet === 'places' && (
+        <Sheet title={t('Locais')} onClose={() => setSheet(null)}>
+          <button
+            className="primary-button"
+            onClick={() => {
+              setSheet(null);
+              setShowSearch(true);
+            }}
+          >
+            <Search size={18} />
+            {t('Pesquisar localidade')}
+          </button>
+          <button
+            className="locate-button"
+            onClick={locate}
+            disabled={!locations.length || locating}
+          >
+            <LocateFixed size={17} />
+            {t(locating ? 'A localizar…' : 'Usar a minha localização')}
+          </button>
+          {favoriteList}
+        </Sheet>
+      )}
+      {sheet === 'day' && selectedDay && (
+        <Sheet
+          title={
+            selectedDate === today
+              ? t('Hoje')
+              : formatDay(selectedDate, { weekday: 'long', day: 'numeric', month: 'long' })
+          }
+          subtitle={location?.name}
+          onClose={() => setSheet(null)}
+          wide
         >
-          <X size={19} />
-        </button>
-        <Download size={32} />
-        <h2>O tempo no teu ecrã principal</h2>
-        <p>
-          <strong>No iPhone:</strong> abre esta página no Safari, toca em Partilhar e escolhe
-          “Adicionar ao ecrã principal”. Ativa “Abrir como app web”, se disponível.
-        </p>
-        <p>
-          <strong>No Android:</strong> abre o menu do Chrome e escolhe “Instalar aplicação” ou
-          “Adicionar ao ecrã principal”.
-        </p>
-        <p className="secondary">
-          A instalação fica disponível quando visitas a app publicada, num browser compatível.
-        </p>
-        <button className="primary-button" onClick={() => setInstallHelp(false)}>
-          Entendido
-        </button>
-      </dialog>
+          <div className="day-switcher">
+            <button
+              className="icon-button"
+              aria-label={t('Anterior')}
+              disabled={daily.findIndex((p) => p.date === selectedDate) <= 0}
+              onClick={() =>
+                selectDate(daily[daily.findIndex((p) => p.date === selectedDate) - 1].date)
+              }
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <span>{t('Detalhe do dia')}</span>
+            <button
+              className="icon-button"
+              aria-label={t('Seguinte')}
+              disabled={daily.findIndex((p) => p.date === selectedDate) >= daily.length - 1}
+              onClick={() =>
+                selectDate(daily[daily.findIndex((p) => p.date === selectedDate) + 1].date)
+              }
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+          <div className="day-overview">
+            <WeatherIcon code={selectedDay.weather} size={45} />
+            <div>
+              <h3>{descriptions.get(selectedDay.weather) ?? t('Previsão do dia')}</h3>
+              <p>
+                {t('Mínima')} {value(selectedDay.min, '°')} · {t('Máxima')}{' '}
+                {value(selectedDay.max, '°')}
+              </p>
+            </div>
+          </div>
+          <div className="day-values">
+            <span>
+              {t('Probabilidade de chuva')}
+              <strong>{value(selectedDay.rain, '%')}</strong>
+            </span>
+            <span>
+              {t('Índice UV')}
+              <strong>{value(selectedDay.uv, '', 1)}</strong>
+            </span>
+          </div>
+          <ForecastChart
+            periods={hoursForDay}
+            timezone={timezone}
+            metric={metric}
+            onMetric={setMetric}
+            selected={selectedHour}
+            onSelect={setSelectedHour}
+            now={now}
+          />
+        </Sheet>
+      )}
+      {indicatorDetail && (
+        <Sheet
+          title={t(indicatorDetail.label)}
+          subtitle={location?.name}
+          onClose={() => setSheet(null)}
+        >
+          <div className="indicator-reading">
+            {indicatorDetail.reading}
+            <span>{t(indicatorDetail.note)}</span>
+          </div>
+          {sheet === 'wind' && <Compass direction={nearestForecast?.direction ?? ''} />}
+          <p className="detail-copy">{t(indicatorDetail.text)}</p>
+          <p className="detail-source">{t(indicatorDetail.source)}</p>
+          {sheet === 'rain' && (
+            <button
+              className="primary-button"
+              onClick={() => {
+                setMetric('rain');
+                setSheet('day');
+                selectDate(today);
+              }}
+            >
+              {t('Ao longo do dia')}
+              <ChevronRight size={18} />
+            </button>
+          )}
+        </Sheet>
+      )}
+      {sheet === 'settings' && (
+        <Sheet
+          title={t('Personaliza o teu resumo')}
+          subtitle={t('Escolhe os indicadores e a ordem em que aparecem.')}
+          onClose={() => setSheet(null)}
+        >
+          <div className="system-settings">
+            <p>
+              <span>{t('Idioma')}</span>
+              <strong>{t(systemLanguage === 'pt' ? 'Português' : 'Inglês')}</strong>
+            </p>
+            <p>
+              <span>{t('Aparência')}</span>
+              <strong>{t(theme === 'dark' ? 'Escuro' : 'Claro')}</strong>
+            </p>
+            <small>{t('A língua e o tema seguem o sistema.')}</small>
+          </div>
+          <h3 className="settings-heading">{t('Indicadores visíveis')}</h3>
+          <div className="indicator-options">
+            {(Object.keys(indicatorNames) as Indicator[]).map((key) => (
+              <label key={key}>
+                <input
+                  type="checkbox"
+                  checked={indicators.includes(key)}
+                  disabled={indicators.length === 1 && indicators.includes(key)}
+                  onChange={() =>
+                    setIndicators((previous) =>
+                      previous.includes(key)
+                        ? previous.filter((k) => k !== key)
+                        : [...previous, key],
+                    )
+                  }
+                />
+                {t(indicatorNames[key])}
+              </label>
+            ))}
+          </div>
+          <div className="indicator-order">
+            {indicators.map((key, index) => (
+              <div key={key}>
+                <span>{t(indicatorNames[key])}</span>
+                <span className="reorder-controls">
+                  <button
+                    disabled={index === 0}
+                    onClick={() => moveIndicator(index, -1)}
+                    aria-label={t('Subir ' + t(indicatorNames[key]))}
+                  >
+                    <ArrowUp size={17} />
+                  </button>
+                  <button
+                    disabled={index === indicators.length - 1}
+                    onClick={() => moveIndicator(index, 1)}
+                    aria-label={t('Descer ' + t(indicatorNames[key]))}
+                  >
+                    <ArrowDown size={17} />
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <button className="text-button" onClick={() => setIndicators(defaultIndicators)}>
+            {t('Repor indicadores')}
+          </button>
+        </Sheet>
+      )}
+      {installHelp && (
+        <Sheet title={t('O tempo no teu ecrã principal')} onClose={() => setInstallHelp(false)}>
+          <div className="detail-copy">
+            <p>
+              <strong>{t('No iPhone:')}</strong>{' '}
+              {t(
+                'abre esta página no Safari, toca em Partilhar e escolhe “Adicionar ao ecrã principal”.',
+              )}{' '}
+              {t('Ativa “Abrir como app web”, se disponível.')}
+            </p>
+            <p>
+              <strong>{t('No Android:')}</strong>{' '}
+              {t(
+                'abre o menu do Chrome e escolhe “Instalar aplicação” ou “Adicionar ao ecrã principal”.',
+              )}
+            </p>
+          </div>
+          <button className="primary-button" onClick={() => setInstallHelp(false)}>
+            {t('Entendido')}
+          </button>
+        </Sheet>
+      )}
     </div>
   );
 }

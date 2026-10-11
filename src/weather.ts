@@ -1,3 +1,5 @@
+import { locale } from './i18n';
+
 export type Location = {
   id: number;
   name: string;
@@ -40,7 +42,7 @@ export type Observation = {
   wind: number | null;
   pressure: number | null;
 };
-export type WeatherType = { id: number; description: string };
+export type WeatherType = { id: number; description: string; englishDescription?: string };
 type Row = Record<string, unknown>;
 
 export function numeric(value: unknown): number | null {
@@ -144,6 +146,8 @@ export function parseWeatherTypes(data: unknown): WeatherType[] {
   return rows(data).map((row) => ({
     id: Number(row.idTipoTempo),
     description: String(row.descTipoTempoPT ?? 'Sem informação'),
+    englishDescription:
+      typeof row.descTipoTempoEN === 'string' ? row.descTipoTempoEN.trim() : undefined,
   }));
 }
 export function parseObservations(data: unknown): Observation[] {
@@ -209,7 +213,7 @@ export function dateInZone(at: string | number, timezone: string): string {
   return `${parts.find((p) => p.type === 'year')!.value}-${parts.find((p) => p.type === 'month')!.value}-${parts.find((p) => p.type === 'day')!.value}`;
 }
 export function formatTime(at: string | number, timezone: string): string {
-  return new Intl.DateTimeFormat('pt-PT', {
+  return new Intl.DateTimeFormat(locale(), {
     timeZone: timezone,
     hour: '2-digit',
     minute: '2-digit',
@@ -220,12 +224,12 @@ export function formatDay(
   options: Intl.DateTimeFormatOptions = { weekday: 'short' },
 ): string {
   // Daily forecast dates are calendar labels, not instants to shift into the previous Azores day.
-  return new Intl.DateTimeFormat('pt-PT', { ...options, timeZone: 'UTC' }).format(
+  return new Intl.DateTimeFormat(locale(), { ...options, timeZone: 'UTC' }).format(
     new Date(`${date}T12:00:00Z`),
   );
 }
 export function value(n: number | null | undefined, suffix = '', digits = 0): string {
   return n === null || n === undefined
     ? '—'
-    : `${n.toLocaleString('pt-PT', { maximumFractionDigits: digits })}${suffix}`;
+    : `${n.toLocaleString(locale(), { maximumFractionDigits: digits })}${suffix}`;
 }
