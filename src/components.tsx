@@ -145,13 +145,29 @@ export function ForecastChart({
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
+  const start = periods.length ? Date.parse(periods[0].at) : 0;
+  const end = periods.length ? Date.parse(periods[periods.length - 1].at) : start + 1;
+  const hasNow = periods.length > 1 && now >= start && now <= end;
+  // A negative selection follows the current time, between two forecast records.
+  const live = selected < 0 && hasNow;
+  const index =
+    selected < 0
+      ? periods.reduce(
+          (best, p, i) =>
+            Math.abs(Date.parse(p.at) - now) < Math.abs(Date.parse(periods[best].at) - now)
+              ? i
+              : best,
+          0,
+        )
+      : Math.min(selected, Math.max(0, periods.length - 1));
+  const before = periods.filter((p) => Date.parse(p.at) <= now).length - 1;
   useEffect(() => {
     const strip = stripRef.current,
-      button = strip?.children[selected] as HTMLElement | undefined;
+      button = strip?.children[index] as HTMLElement | undefined;
     if (strip && button)
       strip.scrollLeft =
         button.offsetLeft - strip.offsetLeft - strip.clientWidth / 2 + button.clientWidth / 2;
-  }, [selected, periods]);
+  }, [index, periods]);
   const height = 190,
     left = 34,
     right = 20,
@@ -163,8 +179,6 @@ export function ForecastChart({
       : Math.floor(Math.min(...valid, 0 === valid.length ? 0 : Infinity) / 5) * 5;
   const high =
     metric === 'rain' ? 100 : Math.max(low + 5, Math.ceil(Math.max(...valid, 5) / 5) * 5);
-  const start = periods.length ? Date.parse(periods[0].at) : 0;
-  const end = periods.length ? Date.parse(periods[periods.length - 1].at) : start + 1;
   const x = (i: number) =>
     left +
     ((Date.parse(periods[i].at) - start) / Math.max(1, end - start)) * (width - left - right);
@@ -188,9 +202,19 @@ export function ForecastChart({
     path += `${connected ? 'L' : 'M'}${x(i)},${y(n)} `;
     connected = true;
   });
-  const chosen = periods[Math.min(selected, Math.max(0, periods.length - 1))];
+  const chosen = periods[index];
   const nowX = left + ((now - start) / Math.max(1, end - start)) * (width - left - right);
-  const hasNow = periods.length > 1 && now >= start && now <= end;
+  const cursorX = live ? nowX : periods.length ? x(index) : 0;
+  // Live readings are linear between the two surrounding records; a missing side stays missing.
+  const reading = (key: 'temperature' | 'rain' | 'wind') => {
+    if (!live) return chosen?.[key] ?? null;
+    const a = periods[before],
+      b = periods[before + 1];
+    if (!b) return a[key];
+    if (a[key] === null || b[key] === null) return null;
+    const from = Date.parse(a.at);
+    return a[key] + ((b[key] - a[key]) * (now - from)) / (Date.parse(b.at) - from);
+  };
   const pointAt = (clientX: number, element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
     const position = ((clientX - rect.left) / rect.width) * width;
@@ -203,8 +227,12 @@ export function ForecastChart({
           : best,
       0,
     );
-    if (closest !== selected) navigator.vibrate?.(5);
-    onSelect(closest);
+    const pick =
+      hasNow && Math.abs(now - target) < Math.abs(Date.parse(periods[closest].at) - target)
+        ? -1
+        : closest;
+    if (pick !== selected) navigator.vibrate?.(5);
+    onSelect(pick);
   };
   return (
     <div ref={containerRef}>
@@ -225,10 +253,16 @@ export function ForecastChart({
       {periods.length && valid.length ? (
         <>
           <div className="chart-summary" aria-live="polite">
-            <strong>{chosen ? formatTime(chosen.at, timezone) : '—'}</strong>
-            <span>{chosen ? value(chosen[metric], ` ${info.unit}`, 1) : '—'}</span>
+            <strong>{live ? t('Agora') : chosen ? formatTime(chosen.at, timezone) : '—'}</strong>
+            <span>{value(reading(metric), ` ${info.unit}`, 1)}</span>
             <span className="secondary">
-              {t(chosen?.interval === 3 ? 'Intervalo de 3 horas' : 'Previsão horária')}
+              {t(
+                live
+                  ? 'Estimativa entre previsões'
+                  : chosen?.interval === 3
+                    ? 'Intervalo de 3 horas'
+                    : 'Previsão horária',
+              )}
             </span>
           </div>
           <div
@@ -238,14 +272,14 @@ export function ForecastChart({
             aria-label={t('Hora da previsão')}
             aria-valuemin={0}
             aria-valuemax={periods.length - 1}
-            aria-valuenow={Math.min(selected, periods.length - 1)}
-            aria-valuetext={`${formatTime(chosen.at, timezone)}. ${t('Temperatura')} ${value(chosen.temperature, '°')}, ${t('Probabilidade de chuva')} ${value(chosen.rain, '%')}, ${t('Vento')} ${value(chosen.wind, ' km/h')}.`}
+            aria-valuenow={index}
+            aria-valuetext={`${live ? t('Agora') : formatTime(chosen.at, timezone)}. ${t('Temperatura')} ${value(reading('temperature'), '°')}, ${t('Probabilidade de chuva')} ${value(reading('rain'), '%')}, ${t('Vento')} ${value(reading('wind'), ' km/h')}.`}
             onKeyDown={(e) => {
               const next =
                 e.key === 'ArrowRight' || e.key === 'ArrowUp'
-                  ? Math.min(periods.length - 1, selected + 1)
+                  ? Math.min(periods.length - 1, live ? before + 1 : index + 1)
                   : e.key === 'ArrowLeft' || e.key === 'ArrowDown'
-                    ? Math.max(0, selected - 1)
+                    ? Math.max(0, live ? before : index - 1)
                     : e.key === 'Home'
                       ? 0
                       : e.key === 'End'
@@ -351,17 +385,9 @@ export function ForecastChart({
               )}
               {chosen && (
                 <>
-                  <path
-                    d={`M${x(Math.min(selected, periods.length - 1))} ${top}V${height - bottom}`}
-                    className="chart-cursor"
-                  />
-                  {chosen[metric] !== null && (
-                    <circle
-                      cx={x(Math.min(selected, periods.length - 1))}
-                      cy={y(chosen[metric]!)}
-                      r="5"
-                      className="chart-dot"
-                    />
+                  <path d={`M${cursorX} ${top}V${height - bottom}`} className="chart-cursor" />
+                  {reading(metric) !== null && (
+                    <circle cx={cursorX} cy={y(reading(metric)!)} r="5" className="chart-dot" />
                   )}
                 </>
               )}
@@ -398,20 +424,20 @@ export function ForecastChart({
           <div className="hour-details" aria-live="polite">
             <span>
               {t('Temperatura')}
-              <strong>{value(chosen.temperature, '°', 1)}</strong>
+              <strong>{value(reading('temperature'), '°', 1)}</strong>
             </span>
             <span>
               {t('Chuva')}
-              <strong>{value(chosen.rain, '%')}</strong>
+              <strong>{value(reading('rain'), '%')}</strong>
             </span>
             <span>
               {t('Vento')}
-              <strong>{value(chosen.wind, ' km/h')}</strong>
+              <strong>{value(reading('wind'), ' km/h')}</strong>
             </span>
           </div>
           <div ref={stripRef} className="hour-strip" aria-label={t('Selecionar hora')}>
             {periods.map((p, i) => (
-              <button key={p.at} aria-pressed={selected === i} onClick={() => onSelect(i)}>
+              <button key={p.at} aria-pressed={!live && index === i} onClick={() => onSelect(i)}>
                 <span>{formatTime(p.at, timezone)}</span>
                 <WeatherIcon
                   code={p.weather}

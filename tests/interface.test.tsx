@@ -259,3 +259,34 @@ it('uses solid links for consecutive three-hour rain records and keeps gradient 
   const gradients = [...container.querySelectorAll('linearGradient')].map((el) => el.id);
   expect(new Set(gradients).size).toBe(2);
 });
+
+it('follows the current time between records until an hour is selected', () => {
+  const periods = parseForecast([
+    { idPeriodo: 24, dataPrev: '2026-10-11T00:00:00' },
+    ...['12:00', '15:00'].map((time, i) => ({
+      idPeriodo: 3,
+      dataPrev: '2026-10-11T' + time + ':00',
+      tMed: 20 + i,
+      probabilidadePrecipita: i ? null : 30,
+    })),
+  ]).filter((p) => p.interval !== 24);
+  const onSelect = vi.fn();
+  const { container } = render(
+    <ForecastChart
+      periods={periods}
+      timezone="Europe/Lisbon"
+      metric="temperature"
+      onMetric={() => {}}
+      selected={-1}
+      onSelect={onSelect}
+      now={(Date.parse(periods[0].at) + Date.parse(periods[1].at)) / 2}
+    />,
+  );
+  const text = screen.getByRole('slider').getAttribute('aria-valuetext')!;
+  expect(text).toContain('Now. Temperature 21°');
+  expect(text).toContain('Chance of rain —');
+  expect(container.querySelector('.chart-summary')!.textContent).toContain('20.5');
+  expect(container.querySelector('.hour-strip [aria-pressed="true"]')).toBeNull();
+  fireEvent.keyDown(screen.getByRole('slider'), { key: 'ArrowRight' });
+  expect(onSelect).toHaveBeenLastCalledWith(1);
+});

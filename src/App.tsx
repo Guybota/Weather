@@ -117,7 +117,8 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [day, setDay] = useState('');
   const [metric, setMetric] = useState<'temperature' | 'rain' | 'wind'>('temperature');
-  const [selectedHour, setSelectedHour] = useState(0);
+  // -1 follows the current time; other values index the selected day's periods.
+  const [selectedHour, setSelectedHour] = useState(-1);
   const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
   const [installHelp, setInstallHelp] = useState(false);
   const [sheet, setSheet] = useState<'day' | 'places' | 'settings' | Indicator | null>(null);
@@ -220,7 +221,7 @@ export default function App() {
     const changingLocation = loadedLocation.current !== location.id;
     if (changingLocation) {
       setDay('');
-      setSelectedHour(0);
+      setSelectedHour(-1);
     }
     Promise.allSettled(
       ['forecast/' + location.id, 'warnings', 'observations'].map((path) =>
@@ -232,20 +233,6 @@ export default function App() {
         const forecast = results[0];
         if (forecast.status !== 'fulfilled') throw forecast.reason;
         const parsedForecast = parseForecast(forecast.value.data);
-        const hourlyToday = parsedForecast.filter(
-          (p) =>
-            p.interval !== 24 &&
-            dateInZone(p.at, location.timezone) === dateInZone(Date.now(), location.timezone),
-        );
-        const closest = hourlyToday.reduce(
-          (best, p, i) =>
-            Math.abs(Date.parse(p.at) - Date.now()) <
-            Math.abs(Date.parse(hourlyToday[best].at) - Date.now())
-              ? i
-              : best,
-          0,
-        );
-        if (changingLocation) setSelectedHour(closest);
         loadedLocation.current = location.id;
         let warnings: Warning[] = [],
           observations: Observation[] = [],
@@ -544,18 +531,7 @@ export default function App() {
   }
   const selectDate = (date: string) => {
     setDay(date);
-    const periods = hourly.filter((p) => dateInZone(p.at, timezone) === date);
-    setSelectedHour(
-      date === today && periods.length
-        ? periods.reduce(
-            (best, p, i) =>
-              Math.abs(Date.parse(p.at) - now) < Math.abs(Date.parse(periods[best].at) - now)
-                ? i
-                : best,
-            0,
-          )
-        : 0,
-    );
+    setSelectedHour(date === today ? -1 : 0);
   };
   function moveFavorite(id: number, offset: number) {
     const next = [...favorites],
