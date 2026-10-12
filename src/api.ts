@@ -13,11 +13,18 @@ function read(key: string): Envelope | null {
   }
 }
 export async function loadData(path: string, signal?: AbortSignal): Promise<Envelope> {
+  // Older Safari versions lack AbortSignal.any() and AbortSignal.timeout().
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal?.reason);
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener('abort', cancel, { once: true });
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException('O pedido excedeu o tempo limite.', 'TimeoutError')),
+    12000,
+  );
   try {
     const response = await fetch(`/api/${path}`, {
-      signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(12000)])
-        : AbortSignal.timeout(12000),
+      signal: controller.signal,
     });
     if (!response.ok) throw new Error('Não foi possível atualizar os dados do IPMA.');
     const data: Envelope = await response.json();
@@ -37,5 +44,8 @@ export async function loadData(path: string, signal?: AbortSignal): Promise<Enve
     if (cached && Date.now() - Date.parse(cached.fetchedAt) < maxAge)
       return { ...cached, stale: true, offline: !navigator.onLine };
     throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', cancel);
   }
 }
